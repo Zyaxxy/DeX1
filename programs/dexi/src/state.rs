@@ -31,11 +31,6 @@ pub struct AdminConfig {
 pub struct AthletePool {
     pub mint: Pubkey,
     pub bump: u8,
-    pub token_vault: Pubkey,
-    pub usdc_vault: Pubkey,
-    pub token_reserve: u64,
-    pub usdc_reserve: u64,
-    pub k: u128,
     pub role: AthleteRole,
     #[max_len(32)]
     pub name: String,

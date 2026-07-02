@@ -74,9 +74,12 @@ impl<'info> ProcessEntryMint<'info> {
             .checked_sub(swap_amount)
             .ok_or(DexiError::ArithmeticError)?;
 
+        let token_reserve = self.pool_token_vault.amount;
+        let usdc_reserve = self.pool_usdc_vault.amount;
+
         let mut curve = ConstantProduct::init(
-            self.pool.token_reserve,
-            self.pool.usdc_reserve,
+            token_reserve,
+            usdc_reserve,
             0,
             0,
             Some(6),
@@ -140,19 +143,6 @@ impl<'info> ProcessEntryMint<'info> {
             ),
             burn_amount,
         )?;
-
-        let pool = &mut self.pool;
-        pool.token_reserve = pool
-            .token_reserve
-            .checked_add(swap_amount)
-            .ok_or(DexiError::ArithmeticError)?;
-        pool.usdc_reserve = pool
-            .usdc_reserve
-            .checked_sub(swap_result.withdraw)
-            .ok_or(DexiError::ArithmeticError)?;
-        pool.k = (pool.token_reserve as u128)
-            .checked_mul(pool.usdc_reserve as u128)
-            .ok_or(DexiError::ArithmeticError)?;
 
         let contest = &mut self.contest;
         contest.prize_pool = contest

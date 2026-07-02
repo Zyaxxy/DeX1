@@ -53,9 +53,12 @@ impl<'info> Buy<'info> {
         require!(self.pool.enabled, DexiError::PoolDisabled);
         require!(usdc_amount > 0, DexiError::InvalidAmount);
 
+        let token_reserve = self.pool_token_vault.amount;
+        let usdc_reserve = self.pool_usdc_vault.amount;
+
         let mut curve = ConstantProduct::init(
-            self.pool.token_reserve,
-            self.pool.usdc_reserve,
+            token_reserve,
+            usdc_reserve,
             0,
             self.config.swap_fee_bps,
             Some(6),
@@ -69,19 +72,6 @@ impl<'info> Buy<'info> {
 
         self.deposit_usdc(swap_result.deposit)?;
         self.withdraw_tokens(swap_result.withdraw, pool_seeds)?;
-
-        let pool = &mut self.pool;
-        pool.usdc_reserve = pool
-            .usdc_reserve
-            .checked_add(swap_result.deposit)
-            .ok_or(DexiError::ArithmeticError)?;
-        pool.token_reserve = pool
-            .token_reserve
-            .checked_sub(swap_result.withdraw)
-            .ok_or(DexiError::ArithmeticError)?;
-        pool.k = (pool.token_reserve as u128)
-            .checked_mul(pool.usdc_reserve as u128)
-            .ok_or(DexiError::ArithmeticError)?;
 
         Ok(())
     }

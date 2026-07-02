@@ -29,11 +29,11 @@ pub struct Initialize<'info> {
 impl<'info> Initialize<'info> {
     pub fn init(&mut self, swap_fee_bps: u16, treasury: Pubkey) -> Result<()> {
         require!(swap_fee_bps <= 1000, DexiError::ArithmeticError);
-        let config = &mut self.config;
-        config.admin = self.admin.key();
-        config.usdc_mint = self.usdc_mint.key();
-        config.swap_fee_bps = swap_fee_bps;
-        config.treasury = treasury;
+        self.config.set_inner(AdminConfig { 
+            admin: self.admin.key(),
+            usdc_mint: self.usdc_mint.key(),
+            swap_fee_bps,
+            treasury });
         Ok(())
     }
 }

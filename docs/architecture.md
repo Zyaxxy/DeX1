@@ -39,11 +39,6 @@ AdminConfig (1 global)
 AthletePool (1 per athlete)
 ├── mint: Pubkey
 ├── bump: u8
-├── token_vault: Pubkey
-├── usdc_vault: Pubkey
-├── token_reserve: u64
-├── usdc_reserve: u64
-├── k: u128                 -- constant product
 ├── role: AthleteRole       -- GK | DEF | MID | FWD
 ├── name: String
 └── enabled: bool
@@ -72,23 +67,19 @@ UserEntry (1 per user per contest)
 
 ## CPMM Math
 
-Constant product formula using the [`constant-product-curve`](https://github.com/deanmlittle/constant-product-curve.git) crate:
-
-```
-token_reserve * usdc_reserve = k
-```
+Constant product formula using the [`constant-product-curve`](https://github.com/deanmlittle/constant-product-curve.git) crate. Reserves are read directly from vault `.amount` at swap time — the pool stores no reserve or `k` fields.
 
 **Buy (USDC in → tokens out):** `LiquidityPair::Y` swap (deposit Y/USDC, withdraw X/token)
 
 **Sell (tokens in → USDC out):** `LiquidityPair::X` swap (deposit X/token, withdraw Y/USDC)
 
-Swap fees are handled internally by the curve and accrue in pool reserves, creating excess value beyond `k` that compounds over time.
+Swap fees are handled internally by the curve and accrue in vault balances.
 
 ## Entry → Prize Pool Mechanics
 
 1. User enters: 11 tokens transferred to contest vault per athlete
 2. At `lock_contest`, keeper calls `process_entry_mint`:
-   - Swap 90% of each token type via its CPMM → USDC to contest escrow
+   - Swap 90% of each token type via its pool CPMM → USDC to contest escrow
    - Burn the remaining 10% of tokens
 3. Burn reduces token supply, increasing price for remaining holders
 4. `settle_contest` captures `escrow_vault` balance as `prize_pool`

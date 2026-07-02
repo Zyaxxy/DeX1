@@ -48,25 +48,15 @@ impl<'info> CreatePool<'info> {
         &mut self,
         name: String,
         role: AthleteRole,
-        bumps: &CreatePoolBumps,
+        _bumps: &CreatePoolBumps,
     ) -> Result<()> {
         require!(name.len() <= MAX_NAME_LEN, DexiError::NameTooLong);
 
         let pool = &mut self.pool;
         pool.mint = self.mint.key();
-        pool.bump = bumps.pool_authority;
-        pool.token_vault = self.token_vault.key();
-        pool.usdc_vault = self.usdc_vault.key();
-        pool.token_reserve = self.token_vault.amount;
-        pool.usdc_reserve = self.usdc_vault.amount;
         pool.role = role;
         pool.name = name;
         pool.enabled = true;
-
-        let k = (pool.token_reserve as u128)
-            .checked_mul(pool.usdc_reserve as u128)
-            .ok_or(DexiError::ArithmeticError)?;
-        pool.k = k;
 
         Ok(())
     }
