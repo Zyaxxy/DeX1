@@ -1,5 +1,6 @@
 {
   "license": "ISC",
+  "private": true,
   "scripts": {
     "test": "ts-mocha -p tsconfig.json tests/**/*.ts --timeout 60000",
     "lint:fix": "prettier */*.js \"*/**/*{.js,.ts}\" -w",

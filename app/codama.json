@@ -1,0 +1,10 @@
+{
+  "idl": "src/idl/dexi.json",
+  "before": [],
+  "scripts": {
+    "js": {
+      "from": "@codama/renderers-js",
+      "args": ["src/lib/program/generated"]
+    }
+  }
+}

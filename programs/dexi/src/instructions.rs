@@ -14,3 +14,5 @@ pub mod settle_contest;
 pub use settle_contest::*;
 pub mod claim_reward;
 pub use claim_reward::*;
+pub mod calculate_rankings;
+pub use calculate_rankings::*;

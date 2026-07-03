@@ -24,7 +24,7 @@ The MVP implements a self-contained fantasy football platform on Solana. A singl
 
 | Account | Purpose |
 |---------|---------|
-| `AdminConfig` | Global authority, USDC mint, swap fee config, treasury |
+| `AdminConfig` | Global authority, keeper, USDC mint, swap fee config, treasury |
 | `AthletePool` | CPMM reserves, mint, vaults, role, name |
 | `Contest` | Tournament state, timers, escrow, entry count, prize split |
 | `UserEntry` | User's 11-athlete lineup, score, rank, claim status |
@@ -33,16 +33,17 @@ The MVP implements a self-contained fantasy football platform on Solana. A singl
 
 | Instruction | Module | Caller | Action |
 |-------------|--------|--------|--------|
-| `initialize` | `initialize.rs` | Admin | Create `AdminConfig` |
+| `initialize` | `initialize.rs` | Admin | Create `AdminConfig` with keeper |
 | `create_pool` | `market/` | Admin | Init CPMM pool for an athlete |
 | `update_pool` | `market/` | Admin | Update pool metadata (role, etc.) |
 | `buy` | `market/` | User | USDC → athlete tokens via CPMM |
 | `sell` | `market/` | User | Athlete tokens → USDC via CPMM |
 | `create_contest` | `create_contest.rs` | Admin | Create contest with start time |
 | `enter_contest` | `enter_contest.rs` | User | Submit 11 tokens to entry vault |
-| `lock_contest` | `lock_contest.rs` | Keeper | Lock contest, prevent further entries |
-| `process_entry_mint` | `market/` | Keeper | Swap 90% of vault tokens → USDC, burn 10% |
+| `lock_contest` | `lock_contest.rs` | Keeper | Lock contest at start_time (auth required) |
+| `process_entry_mint` | `market/` | Keeper | Swap 90% vault tokens → USDC, burn 10% |
 | `set_scores` | `set_scores.rs` | Keeper | Write scores to each `UserEntry` |
+| `calculate_rankings` | `calculate_rankings.rs` | Keeper | Assign ranks to entries (batch verify sorted) |
 | `settle_contest` | `settle_contest.rs` | Keeper | Finalize prize pool from escrow |
 | `claim_reward` | `claim_reward.rs` | User | Claim USDC prize from escrow |
 
@@ -56,28 +57,31 @@ The MVP implements a self-contained fantasy football platform on Solana. A singl
 │ lineups via │───▶│ start_time    │───▶│ scores to    │
 │ enter_cont. │    │               │    │ UserEntry    │
 │             │    │ lock_contest  │    │              │
-│ Tokens go   │    │               │    │ settle_cont  │
-│ to vault    │    │ Keeper swaps  │    │ finalizes    │
-│             │    │ 90%→USDC via  │    │ prize pool   │
+│ Tokens go   │    │ (keeper auth) │    │ calculate_   │
+│ to vault    │    │               │    │ rankings     │
+│             │    │ Keeper swaps  │    │ (batch assign│
+│             │    │ 90%→USDC via  │    │  ranks 0-N)  │
 │             │    │ process_entr. │    │              │
-│             │    │               │    │ Top N claim  │
-│             │    │ Burn 10%      │    │ proportional │
+│             │    │ (keeper auth) │    │ settle_cont  │
+│             │    │               │    │ finalizes    │
+│             │    │ Burn 10%      │    │ prize pool   │
+│             │    │               │    │              │
 └─────────────┘    └───────────────┘    └──────┬───────┘
-                                                │
-                                                ▼
-                                         ┌──────────────┐
-                                         │ CLAIM PHASE  │
-                                         │              │
-                                         │ User calls   │
-                                         │ claim_reward │
-                                         │              │
-                                         │ Program reads│
-                                         │ UserEntry    │
-                                         │ score, rank  │
-                                         │              │
-                                         │ Pays USDC    │
-                                         │ from escrow  │
-                                         └──────────────┘
+                                                 │
+                                                 ▼
+                                          ┌──────────────┐
+                                          │ CLAIM PHASE  │
+                                          │              │
+                                          │ User calls   │
+                                          │ claim_reward │
+                                          │              │
+                                          │ Program reads│
+                                          │ UserEntry    │
+                                          │ rank         │
+                                          │              │
+                                          │ Pays USDC    │
+                                          │ from escrow  │
+                                          └──────────────┘
 ```
 
 ## Prize Distribution

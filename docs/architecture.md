@@ -23,6 +23,7 @@ programs/dexi/
         ├── enter_contest.rs   -- Lineup submission
         ├── lock_contest.rs    -- Lock contest at start_time
         ├── set_scores.rs      -- Keeper score posting
+        ├── calculate_rankings.rs -- Assign ranks to entries (Phase 0)
         ├── settle_contest.rs  -- Finalize prize pool
         └── claim_reward.rs    -- Prize claim
 ```
@@ -32,6 +33,7 @@ programs/dexi/
 ```
 AdminConfig (1 global)
 ├── admin: Pubkey
+├── keeper: Pubkey          -- Authorized keeper (Phase 0)
 ├── usdc_mint: Pubkey
 ├── swap_fee_bps: u16
 └── treasury: Pubkey
@@ -48,7 +50,7 @@ Contest (1 per tournament)
 ├── admin: Pubkey
 ├── bump: u8
 ├── start_time: i64
-├── status: ContestStatus   -- Created | Open | Locked | Settled
+├── status: ContestStatus   -- Open | Locked | Settled (Created removed)
 ├── entry_count: u64
 ├── prize_pool: u64
 ├── winner_count: u8

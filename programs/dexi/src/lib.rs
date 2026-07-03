@@ -15,8 +15,8 @@ declare_id!("A5PqjrLDne1y5iskNFxNhSpC2w1regprbaKZPTxAtAJS");
 pub mod dexi {
     use super::*;
 
-    pub fn initialize(ctx: Context<Initialize>, swap_fee_bps: u16, treasury: Pubkey) -> Result<()> {
-        ctx.accounts.init(swap_fee_bps, treasury)
+    pub fn initialize(ctx: Context<Initialize>, swap_fee_bps: u16, treasury: Pubkey, keeper: Pubkey) -> Result<()> {
+        ctx.accounts.init(swap_fee_bps, treasury, keeper)
     }
 
     pub fn create_pool(
@@ -80,5 +80,11 @@ pub mod dexi {
 
     pub fn claim_reward(ctx: Context<ClaimReward>) -> Result<()> {
         ctx.accounts.claim()
+    }
+
+    pub fn calculate_rankings<'a>(
+        ctx: Context<'a, CalculateRankings<'a>>,
+    ) -> Result<()> {
+        ctx.accounts.calculate(ctx.remaining_accounts)
     }
 }

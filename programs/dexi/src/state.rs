@@ -11,7 +11,6 @@ pub enum AthleteRole {
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Eq, InitSpace)]
 pub enum ContestStatus {
-    Created,
     Open,
     Locked,
     Settled,
@@ -21,6 +20,7 @@ pub enum ContestStatus {
 #[derive(InitSpace)]
 pub struct AdminConfig {
     pub admin: Pubkey,
+    pub keeper: Pubkey,
     pub usdc_mint: Pubkey,
     pub swap_fee_bps: u16,
     pub treasury: Pubkey,

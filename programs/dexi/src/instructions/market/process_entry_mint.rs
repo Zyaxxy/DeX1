@@ -31,7 +31,11 @@ pub struct ProcessEntryMint<'info> {
         associated_token::token_program = token_program,
     )]
     pub contest_escrow_vault: Box<InterfaceAccount<'info, TokenAccount>>,
-    #[account(seeds = [ADMIN_SEED], bump)]
+    #[account(
+        seeds = [ADMIN_SEED],
+        bump,
+        constraint = config.keeper == keeper.key() @ DexiError::NotAdmin
+    )]
     pub config: Box<Account<'info, AdminConfig>>,
     #[account(mut,
         associated_token::mint = mint,
@@ -143,12 +147,6 @@ impl<'info> ProcessEntryMint<'info> {
             ),
             burn_amount,
         )?;
-
-        let contest = &mut self.contest;
-        contest.prize_pool = contest
-            .prize_pool
-            .checked_add(swap_result.withdraw)
-            .ok_or(DexiError::ArithmeticError)?;
 
         Ok(())
     }

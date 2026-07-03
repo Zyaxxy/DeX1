@@ -27,7 +27,6 @@ impl<'info> ClaimReward<'info> {
 
         require!(contest.settled, DexiError::NotSettled);
         require!(!entry.claimed, DexiError::AlreadyClaimed);
-        require!(entry.score > 0, DexiError::NoScore);
 
         let rank = entry.rank as usize;
         require!(rank < contest.winner_count as usize, DexiError::NoPrize);

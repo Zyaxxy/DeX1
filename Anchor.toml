@@ -9,7 +9,7 @@ skip-lint = false
 dexi = "A5PqjrLDne1y5iskNFxNhSpC2w1regprbaKZPTxAtAJS"
 
 [provider]
-cluster = "localnet"
+cluster = "devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]

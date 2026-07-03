@@ -51,11 +51,11 @@ pub enum DexiError {
     #[msg("Name too long")]
     NameTooLong,
 
+    #[msg("Contest has not started yet")]
+    ContestNotStarted,
+
     #[msg("Invalid prize split configuration")]
     InvalidPrizeSplit,
-
-    #[msg("No score recorded")]
-    NoScore,
 
     #[msg("Slippage exceeded")]
     SlippageExceeded,
