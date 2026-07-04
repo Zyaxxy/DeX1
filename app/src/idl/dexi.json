@@ -1,5 +1,5 @@
 {
-  "address": "A5PqjrLDne1y5iskNFxNhSpC2w1regprbaKZPTxAtAJS",
+  "address": "5RjcrhEhspU8YLLjWN7SJ3TRJkoLZW3LnkrCWCNgTDb3",
   "metadata": {
     "name": "dexi",
     "version": "0.1.0",
@@ -576,6 +576,99 @@
       ]
     },
     {
+      "name": "enter_contest",
+      "discriminator": [
+        248,
+        207,
+        142,
+        242,
+        66,
+        162,
+        150,
+        16
+      ],
+      "accounts": [
+        {
+          "name": "config"
+        },
+        {
+          "name": "contest",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  116,
+                  101,
+                  115,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "contest.id",
+                "account": "Contest"
+              }
+            ]
+          }
+        },
+        {
+          "name": "entry",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  110,
+                  116,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "contest"
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
+        },
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "athletes",
+          "type": {
+            "array": [
+              "pubkey",
+              11
+            ]
+          }
+        }
+      ]
+    },
+    {
       "name": "create_pool",
       "discriminator": [
         233,
@@ -795,103 +888,6 @@
             "defined": {
               "name": "AthleteRole"
             }
-          }
-        }
-      ]
-    },
-    {
-      "name": "enter_contest",
-      "discriminator": [
-        124,
-        21,
-        89,
-        144,
-        102,
-        156,
-        149,
-        232
-      ],
-      "accounts": [
-        {
-          "name": "config"
-        },
-        {
-          "name": "contest",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  99,
-                  111,
-                  110,
-                  116,
-                  101,
-                  115,
-                  116
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "contest.id",
-                "account": "Contest"
-              }
-            ]
-          }
-        },
-        {
-          "name": "entry",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  101,
-                  110,
-                  116,
-                  114,
-                  121
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "contest"
-              },
-              {
-                "kind": "account",
-                "path": "user"
-              }
-            ]
-          }
-        },
-        {
-          "name": "user",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "token_program",
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
-        },
-        {
-          "name": "associated_token_program",
-          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": [
-        {
-          "name": "athletes",
-          "type": {
-            "array": [
-              "pubkey",
-              11
-            ]
           }
         }
       ]
@@ -1840,6 +1836,78 @@
       "args": []
     },
     {
+      "name": "setup_contest",
+      "discriminator": [
+        130,
+        243,
+        88,
+        62,
+        118,
+        222,
+        129,
+        31
+      ],
+      "accounts": [
+        {
+          "name": "config"
+        },
+        {
+          "name": "contest",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  116,
+                  101,
+                  115,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "contest.id",
+                "account": "Contest"
+              }
+            ]
+          }
+        },
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "associated_token_program",
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "player_mints",
+          "type": {
+            "vec": "pubkey"
+          }
+        }
+      ]
+    },
+    {
       "name": "update_pool",
       "discriminator": [
         239,
@@ -2289,6 +2357,26 @@
           {
             "name": "claimed",
             "type": "bool"
+          },
+          {
+            "name": "is_complete",
+            "type": "bool"
+          },
+          {
+            "name": "gk_count",
+            "type": "u8"
+          },
+          {
+            "name": "def_count",
+            "type": "u8"
+          },
+          {
+            "name": "mid_count",
+            "type": "u8"
+          },
+          {
+            "name": "fwd_count",
+            "type": "u8"
           }
         ]
       }

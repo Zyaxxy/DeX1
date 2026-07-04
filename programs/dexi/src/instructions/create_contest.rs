@@ -4,7 +4,6 @@ use crate::constants::*;
 use crate::error::DexiError;
 use crate::state::*;
 
-
 #[derive(Accounts)]
 #[instruction(id: u64)]
 pub struct CreateContest<'info> {
@@ -34,32 +33,38 @@ impl<'info> CreateContest<'info> {
         start_time: i64,
         winner_count: u8,
         prize_split: Vec<u16>,
+        bumps: &CreateContestBumps,
     ) -> Result<()> {
         require!(
             !prize_split.is_empty() && prize_split.len() <= MAX_PRIZE_SPLIT,
             DexiError::InvalidPrizeSplit
         );
-        require!(winner_count as usize == prize_split.len(), DexiError::InvalidPrizeSplit);
+        require!(
+            winner_count as usize == prize_split.len(),
+            DexiError::InvalidPrizeSplit
+        );
 
         let total_bps: u16 = prize_split.iter().sum();
         require!(total_bps <= BASIS_POINTS, DexiError::InvalidPrizeSplit);
-
-        let contest = &mut self.contest;
-        contest.id = id;
-        contest.admin = self.admin.key();
-        contest.start_time = start_time;
-        contest.status = ContestStatus::Open;
-        contest.entry_count = 0;
-        contest.prize_pool = 0;
-        contest.winner_count = winner_count;
-        contest.escrow_vault = self.escrow_vault.key();
-        contest.settled = false;
 
         let mut split_arr = [0u16; MAX_PRIZE_SPLIT];
         for (i, &bps) in prize_split.iter().enumerate() {
             split_arr[i] = bps;
         }
-        contest.prize_split = split_arr;
+
+        self.contest.set_inner(Contest {
+            id,
+            bump: bumps.contest,
+            admin: self.admin.key(),
+            start_time,
+            status: ContestStatus::Open,
+            entry_count: 0,
+            prize_pool: 0,
+            winner_count,
+            prize_split: split_arr,
+            escrow_vault: self.escrow_vault.key(),
+            settled: false,
+        });
 
         Ok(())
     }

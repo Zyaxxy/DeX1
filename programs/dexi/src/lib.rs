@@ -9,7 +9,7 @@ pub use constants::*;
 pub use instructions::*;
 pub use state::*;
 
-declare_id!("A5PqjrLDne1y5iskNFxNhSpC2w1regprbaKZPTxAtAJS");
+declare_id!("5RjcrhEhspU8YLLjWN7SJ3TRJkoLZW3LnkrCWCNgTDb3");
 
 #[program]
 pub mod dexi {
@@ -51,15 +51,22 @@ pub mod dexi {
         winner_count: u8,
         prize_split: Vec<u16>,
     ) -> Result<()> {
-        ctx.accounts.init(id, start_time, winner_count, prize_split)
+        ctx.accounts.init(id, start_time, winner_count, prize_split, &ctx.bumps)
     }
 
     pub fn enter_contest<'a>(
         ctx: Context<'a, EnterContest<'a>>,
-        athletes: [Pubkey; 11],
+        athletes: [Pubkey; LINEUP_SIZE],
     ) -> Result<()> {
         ctx.accounts
             .enter(athletes, &ctx.bumps, ctx.remaining_accounts)
+    }
+
+    pub fn setup_contest<'a>(
+        ctx: Context<'a, SetupContest<'a>>,
+        player_mints: Vec<Pubkey>,
+    ) -> Result<()> {
+        ctx.accounts.setup(player_mints, &ctx.bumps, ctx.remaining_accounts)
     }
 
     pub fn lock_contest(ctx: Context<LockContest>) -> Result<()> {

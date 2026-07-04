@@ -62,4 +62,9 @@ pub struct UserEntry {
     pub score: i64,
     pub rank: u32,
     pub claimed: bool,
+    pub is_complete: bool,
+    pub gk_count: u8,
+    pub def_count: u8,
+    pub mid_count: u8,
+    pub fwd_count: u8,
 }

@@ -19,3 +19,5 @@ pub const REQUIRED_GK: u8 = 1;
 pub const REQUIRED_DEF: u8 = 2;
 pub const REQUIRED_MID: u8 = 2;
 pub const REQUIRED_FWD: u8 = 2;
+
+pub const ENTRY_TOKEN_AMOUNT: u64 = 1;

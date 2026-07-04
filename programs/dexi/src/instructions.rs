@@ -6,6 +6,8 @@ pub mod create_contest;
 pub use create_contest::*;
 pub mod enter_contest;
 pub use enter_contest::*;
+pub mod setup_contest;
+pub use setup_contest::*;
 pub mod lock_contest;
 pub use lock_contest::*;
 pub mod set_scores;

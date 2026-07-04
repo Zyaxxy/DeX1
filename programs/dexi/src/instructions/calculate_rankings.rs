@@ -1,5 +1,4 @@
 use anchor_lang::prelude::*;
-use anchor_lang::AccountSerialize;
 use crate::constants::*;
 use crate::state::{AdminConfig, Contest, ContestStatus, UserEntry};
 use crate::error::DexiError;
@@ -28,38 +27,41 @@ impl<'info> CalculateRankings<'info> {
         let contest_key = self.contest.key();
 
         for i in 0..n {
-            require!(remaining_accounts[i].is_writable, DexiError::InvalidContestStatus);
-            {
-                let data = remaining_accounts[i].data.borrow();
+            let info = &remaining_accounts[i];
+            require!(info.is_writable, DexiError::InvalidContestStatus);
+
+            let (entry, prev_score) = {
+                let data = info.data.borrow();
                 let mut cursor: &[u8] = &data;
                 let entry = UserEntry::try_deserialize(&mut cursor)
                     .map_err(|_| DexiError::InvalidContestStatus)?;
                 require!(entry.contest == contest_key, DexiError::InvalidContestStatus);
-                if i > 0 {
+
+                let prev_score = if i > 0 {
                     let prev_data = remaining_accounts[i - 1].data.borrow();
                     let mut prev_cursor: &[u8] = &prev_data;
                     let prev = UserEntry::try_deserialize(&mut prev_cursor)
                         .map_err(|_| DexiError::InvalidContestStatus)?;
-                    require!(prev.score >= entry.score, DexiError::ArithmeticError);
-                }
-            }
-        }
+                    Some(prev.score)
+                } else {
+                    None
+                };
 
-        for i in 0..n {
-            let entry = {
-                let data = remaining_accounts[i].data.borrow();
-                let mut cursor: &[u8] = &data;
-                let mut entry = UserEntry::try_deserialize(&mut cursor)
-                    .map_err(|_| DexiError::InvalidContestStatus)?;
-                entry.rank = i as u32;
-                entry
+                (entry, prev_score)
             };
 
-            let mut buf = Vec::new();
-            entry.try_serialize(&mut buf)
+            if let Some(prev_score) = prev_score {
+                require!(prev_score >= entry.score, DexiError::ArithmeticError);
+            }
+
+            let mut ranked = entry;
+            ranked.rank = i as u32;
+
+            let mut buf = Vec::with_capacity(UserEntry::DISCRIMINATOR.len() + UserEntry::INIT_SPACE);
+            ranked.try_serialize(&mut buf)
                 .map_err(|_| DexiError::ArithmeticError)?;
 
-            let mut data = remaining_accounts[i].data.borrow_mut();
+            let mut data = info.data.borrow_mut();
             data[..buf.len()].copy_from_slice(&buf);
         }
 

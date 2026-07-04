@@ -1,14 +1,11 @@
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::system_program;
 use anchor_spl::token::{self, Token, TokenAccount, Transfer};
-use anchor_spl::associated_token;
 use crate::constants::*;
 use crate::error::DexiError;
 use crate::state::*;
 
-pub const ENTRY_TOKEN_AMOUNT: u64 = 1;
-
 #[derive(Accounts)]
+#[instruction(athletes: [Pubkey; LINEUP_SIZE])]
 pub struct EnterContest<'info> {
     pub config: Account<'info, AdminConfig>,
     #[account(mut, seeds = [CONTEST_SEED, &contest.id.to_le_bytes()], bump = contest.bump)]
@@ -24,7 +21,6 @@ pub struct EnterContest<'info> {
     #[account(mut)]
     pub user: Signer<'info>,
     pub token_program: Program<'info, Token>,
-    pub associated_token_program: Program<'info, associated_token::AssociatedToken>,
     pub system_program: Program<'info, System>,
 }
 
@@ -46,76 +42,81 @@ impl<'info> EnterContest<'info> {
             DexiError::EntryDeadlinePassed
         );
 
-        let user_info = self.user.to_account_info();
-        let contest_info = self.contest.to_account_info();
-        let token_program_info = self.token_program.to_account_info();
-        let ata_program_info = self.associated_token_program.to_account_info();
-        let system_program_info = self.system_program.to_account_info();
+        let user_key = self.user.key();
+        let contest_key = self.contest.key();
 
-        let mut gk_count = 0u8;
-        let mut def_count = 0u8;
-        let mut mid_count = 0u8;
-        let mut fwd_count = 0u8;
+        // Single pass: deduplicate and count mint occurrences, validate full lineup
+        let mut unique_mints: Vec<Pubkey> = Vec::with_capacity(LINEUP_SIZE);
+        let mut mint_counts: Vec<u8> = Vec::with_capacity(LINEUP_SIZE);
 
-        let needed = LINEUP_SIZE * 4;
-        require!(remaining_accounts.len() >= needed, DexiError::ArithmeticError);
+        for &mint in &athletes {
+            require!(mint != Pubkey::default(), DexiError::InvalidLineup);
 
-        for i in 0..LINEUP_SIZE {
-            let mint = athletes[i];
+            if let Some(pos) = unique_mints.iter().position(|&m| m == mint) {
+                mint_counts[pos] = mint_counts[pos].checked_add(1).ok_or(DexiError::ArithmeticError)?;
+            } else {
+                unique_mints.push(mint);
+                mint_counts.push(1);
+            }
+        }
 
-            let user_ata_info = &remaining_accounts[i * 4];
-            let vault_info = &remaining_accounts[i * 4 + 1];
-            let mint_info = &remaining_accounts[i * 4 + 2];
-            let pool_info = &remaining_accounts[i * 4 + 3];
+        let required_accts = unique_mints.len().checked_mul(4).ok_or(DexiError::ArithmeticError)?;
+        require!(
+            remaining_accounts.len() >= required_accts,
+            DexiError::ArithmeticError
+        );
 
+        let mut accounts_iter = remaining_accounts.iter();
+        let mut role_counts = [0u8; 4];
+
+        for (i, &mint) in unique_mints.iter().enumerate() {
+            let count = mint_counts[i];
+
+            let mint_info = next_account_info(&mut accounts_iter)?;
             require!(mint_info.key() == mint, DexiError::InvalidMint);
 
-            let user_ata = Account::<TokenAccount>::try_from(user_ata_info)?;
-            require!(user_ata.owner == self.user.key(), DexiError::InvalidMint);
-            require!(user_ata.mint == mint, DexiError::InvalidMint);
-            require!(user_ata.amount >= ENTRY_TOKEN_AMOUNT, DexiError::ArithmeticError);
+            let user_ata = anchor_spl::associated_token::get_associated_token_address(&user_key, &mint);
+            let contest_vault = anchor_spl::associated_token::get_associated_token_address(&contest_key, &mint);
+
+            let user_ata_info = next_account_info(&mut accounts_iter)?;
+            let vault_info = next_account_info(&mut accounts_iter)?;
+
+            require!(user_ata_info.key() == user_ata, DexiError::InvalidMint);
+            require!(vault_info.key() == contest_vault, DexiError::InvalidMint);
+
+            let user_ata_data = Account::<TokenAccount>::try_from(user_ata_info)?;
+            require!(user_ata_data.owner == user_key, DexiError::InvalidMint);
+            require!(user_ata_data.mint == mint, DexiError::InvalidMint);
+
+            let required_amount = ENTRY_TOKEN_AMOUNT
+                .checked_mul(count as u64)
+                .ok_or(DexiError::ArithmeticError)?;
+            require!(
+                user_ata_data.amount >= required_amount,
+                DexiError::ArithmeticError
+            );
+
+            let pool_pda = Pubkey::find_program_address(
+                &[POOL_SEED, mint.as_ref()],
+                &crate::ID,
+            ).0;
+
+            let pool_info = next_account_info(&mut accounts_iter)?;
+            require!(pool_info.key() == pool_pda, DexiError::InvalidMint);
 
             let pool = Account::<AthletePool>::try_from(pool_info)?;
             require!(pool.mint == mint, DexiError::InvalidMint);
             require!(pool.enabled, DexiError::PoolDisabled);
 
-            match pool.role {
-                AthleteRole::GK => gk_count += 1,
-                AthleteRole::DEF => def_count += 1,
-                AthleteRole::MID => mid_count += 1,
-                AthleteRole::FWD => fwd_count += 1,
-            }
-
-            let contest_key = self.contest.key();
-            let expected_vault = associated_token::get_associated_token_address(&contest_key, &mint);
-            require!(vault_info.key() == expected_vault, DexiError::InvalidMint);
-
-            if vault_info.data_is_empty() {
-                let ata_ix = anchor_lang::solana_program::instruction::Instruction {
-                    program_id: self.associated_token_program.key(),
-                    accounts: vec![
-                        AccountMeta::new(self.user.key(), true),
-                        AccountMeta::new(vault_info.key(), false),
-                        AccountMeta::new_readonly(contest_key, false),
-                        AccountMeta::new_readonly(mint, false),
-                        AccountMeta::new_readonly(system_program::ID, false),
-                        AccountMeta::new_readonly(anchor_spl::token::ID, false),
-                    ],
-                    data: vec![],
-                };
-                anchor_lang::solana_program::program::invoke(
-                    &ata_ix,
-                    &[
-                        user_info.clone(),
-                        vault_info.clone(),
-                        contest_info.clone(),
-                        mint_info.clone(),
-                        system_program_info.clone(),
-                        token_program_info.clone(),
-                        ata_program_info.clone(),
-                    ],
-                )?;
-            }
+            let role_idx = match pool.role {
+                AthleteRole::GK => 0,
+                AthleteRole::DEF => 1,
+                AthleteRole::MID => 2,
+                AthleteRole::FWD => 3,
+            };
+            role_counts[role_idx] = role_counts[role_idx]
+                .checked_add(count)
+                .ok_or(DexiError::ArithmeticError)?;
 
             token::transfer(
                 CpiContext::new(
@@ -123,31 +124,39 @@ impl<'info> EnterContest<'info> {
                     Transfer {
                         from: user_ata_info.to_account_info(),
                         to: vault_info.to_account_info(),
-                        authority: user_info.clone(),
+                        authority: self.user.to_account_info(),
                     },
                 ),
-                ENTRY_TOKEN_AMOUNT,
+                required_amount,
             )?;
         }
 
         require!(
-            gk_count == REQUIRED_GK
-                && def_count >= REQUIRED_DEF
-                && mid_count >= REQUIRED_MID
-                && fwd_count >= REQUIRED_FWD,
+            role_counts[0] == REQUIRED_GK
+                && role_counts[1] >= REQUIRED_DEF
+                && role_counts[2] >= REQUIRED_MID
+                && role_counts[3] >= REQUIRED_FWD,
             DexiError::InvalidLineup
         );
 
-        let entry = &mut self.entry;
-        entry.user = self.user.key();
-        entry.contest = self.contest.key();
-        entry.athletes = athletes;
-        entry.score = 0;
-        entry.rank = 0;
-        entry.claimed = false;
+        self.entry.set_inner(UserEntry {
+            user: user_key,
+            contest: contest_key,
+            athletes,
+            score: 0,
+            rank: 0,
+            claimed: false,
+            is_complete: true,
+            gk_count: role_counts[0],
+            def_count: role_counts[1],
+            mid_count: role_counts[2],
+            fwd_count: role_counts[3],
+        });
 
-        let contest = &mut self.contest;
-        contest.entry_count = contest.entry_count.checked_add(1).ok_or(DexiError::ArithmeticError)?;
+        self.contest.entry_count = self.contest
+            .entry_count
+            .checked_add(1)
+            .ok_or(DexiError::ArithmeticError)?;
 
         Ok(())
     }

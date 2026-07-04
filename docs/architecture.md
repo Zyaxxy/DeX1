@@ -20,7 +20,8 @@ programs/dexi/
         │   ├── sell.rs        -- Athlete tokens → USDC (constant-product-curve)
         │   └── process_entry_mint.rs -- Contest vault swap/burn
         ├── create_contest.rs  -- Contest creation
-        ├── enter_contest.rs   -- Lineup submission
+        ├── initialize_entry.rs-- Lineup init (6 players + token transfer)
+        ├── finalize_entry.rs  -- Lineup completion (5 players)
         ├── lock_contest.rs    -- Lock contest at start_time
         ├── set_scores.rs      -- Keeper score posting
         ├── calculate_rankings.rs -- Assign ranks to entries (Phase 0)
@@ -64,7 +65,12 @@ UserEntry (1 per user per contest)
 ├── athletes: [Pubkey; 11]
 ├── score: i64
 ├── rank: u32
-└── claimed: bool
+├── claimed: bool
+├── is_complete: bool
+├── gk_count: u8
+├── def_count: u8
+├── mid_count: u8
+└── fwd_count: u8
 ```
 
 ## CPMM Math

@@ -48,15 +48,17 @@ impl<'info> CreatePool<'info> {
         &mut self,
         name: String,
         role: AthleteRole,
-        _bumps: &CreatePoolBumps,
+        bumps: &CreatePoolBumps,
     ) -> Result<()> {
         require!(name.len() <= MAX_NAME_LEN, DexiError::NameTooLong);
 
-        let pool = &mut self.pool;
-        pool.mint = self.mint.key();
-        pool.role = role;
-        pool.name = name;
-        pool.enabled = true;
+        self.pool.set_inner(AthletePool {
+            mint: self.mint.key(),
+            bump: bumps.pool,
+            role,
+            name,
+            enabled: true,
+        });
 
         Ok(())
     }

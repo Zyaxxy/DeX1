@@ -39,7 +39,8 @@ The MVP implements a self-contained fantasy football platform on Solana. A singl
 | `buy` | `market/` | User | USDC → athlete tokens via CPMM |
 | `sell` | `market/` | User | Athlete tokens → USDC via CPMM |
 | `create_contest` | `create_contest.rs` | Admin | Create contest with start time |
-| `enter_contest` | `enter_contest.rs` | User | Submit 11 tokens to entry vault |
+| `initialize_entry_with_tokens` | `initialize_entry.rs` | User | Init entry with 6 players, validate roles, transfer tokens |
+| `finalize_entry` | `finalize_entry.rs` | User | Complete entry with 5 players, validate full lineup |
 | `lock_contest` | `lock_contest.rs` | Keeper | Lock contest at start_time (auth required) |
 | `process_entry_mint` | `market/` | Keeper | Swap 90% vault tokens → USDC, burn 10% |
 | `set_scores` | `set_scores.rs` | Keeper | Write scores to each `UserEntry` |
@@ -55,8 +56,8 @@ The MVP implements a self-contained fantasy football platform on Solana. A singl
 │             │    │               │    │              │
 │ Users enter │    │ Clock hits    │    │ Keeper posts │
 │ lineups via │───▶│ start_time    │───▶│ scores to    │
-│ enter_cont. │    │               │    │ UserEntry    │
-│             │    │ lock_contest  │    │              │
+│ init_entry  │    │               │    │ UserEntry    │
+│ + finalize  │    │ lock_contest  │    │              │
 │ Tokens go   │    │ (keeper auth) │    │ calculate_   │
 │ to vault    │    │               │    │ rankings     │
 │             │    │ Keeper swaps  │    │ (batch assign│
@@ -99,7 +100,7 @@ Top N winners split the Tournament Escrow USDC. N and split ratios are configura
 
 1. Scaffold: state structs, constants, errors
 2. CPMM: `create_pool`, `buy`, `sell` (in `instructions/market/`)
-3. Contest: `create_contest`, `enter_contest`
+3. Contest: `create_contest`, `initialize_entry_with_tokens` + `finalize_entry`
 4. Lock: `lock_contest`, `process_entry_mint` (swap + burn)
 5. Settlement: `set_scores`, `settle_contest`, `claim_reward`
 6. Keeper: off-chain TypeScript bot
