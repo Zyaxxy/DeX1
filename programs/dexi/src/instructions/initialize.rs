@@ -15,9 +15,7 @@ pub struct Initialize<'info> {
         space = AdminConfig::DISCRIMINATOR.len() + AdminConfig::INIT_SPACE,
     )]
     pub config: Account<'info, AdminConfig>,
-    #[account(
-        mint::token_program = token_program
-    )]
+    #[account(mint::token_program = token_program)]
     pub usdc_mint: InterfaceAccount<'info, Mint>,
     #[account(mut)]
     pub admin: Signer<'info>,
@@ -28,13 +26,16 @@ pub struct Initialize<'info> {
 
 impl<'info> Initialize<'info> {
     pub fn init(&mut self, swap_fee_bps: u16, treasury: Pubkey, keeper: Pubkey) -> Result<()> {
-        require!(swap_fee_bps <= 1000, DexiError::ArithmeticError);
-        self.config.set_inner(AdminConfig { 
+        // Sanity-cap: 10% max protocol fee
+        require!(swap_fee_bps <= 1_000, DexiError::InvalidFee);
+
+        self.config.set_inner(AdminConfig {
             admin: self.admin.key(),
             keeper,
             usdc_mint: self.usdc_mint.key(),
             swap_fee_bps,
-            treasury });
+            treasury,
+        });
         Ok(())
     }
 }

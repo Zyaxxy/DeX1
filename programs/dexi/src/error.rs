@@ -73,15 +73,17 @@ pub enum DexiError {
     InvalidAmount,
 }
 
+/// Map constant-product-curve errors to program errors.
 impl From<CurveError> for DexiError {
-    fn from(error: CurveError) -> Self {
-        match error {
+    fn from(e: CurveError) -> Self {
+        match e {
             CurveError::Overflow => DexiError::Overflow,
             CurveError::Underflow => DexiError::Underflow,
             CurveError::InvalidFeeAmount => DexiError::InvalidFee,
             CurveError::InvalidPrecision => DexiError::ArithmeticError,
-            CurveError::InsufficientBalance => DexiError::InsufficientLiquidity,
-            CurveError::ZeroBalance => DexiError::InsufficientLiquidity,
+            CurveError::InsufficientBalance | CurveError::ZeroBalance => {
+                DexiError::InsufficientLiquidity
+            }
             CurveError::SlippageLimitExceeded => DexiError::SlippageExceeded,
         }
     }

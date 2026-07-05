@@ -15,7 +15,7 @@ pub struct EnterContest<'info> {
         payer = user,
         space = UserEntry::DISCRIMINATOR.len() + UserEntry::INIT_SPACE,
         seeds = [ENTRY_SEED, contest.key().as_ref(), user.key().as_ref()],
-        bump
+        bump,
     )]
     pub entry: Account<'info, UserEntry>,
     #[account(mut)]
@@ -28,24 +28,18 @@ impl<'info> EnterContest<'info> {
     pub fn enter(
         &mut self,
         athletes: [Pubkey; LINEUP_SIZE],
-        _bumps: &EnterContestBumps,
         remaining_accounts: &'info [AccountInfo<'info>],
     ) -> Result<()> {
         let clock = Clock::get()?;
 
-        require!(
-            self.contest.status == ContestStatus::Open,
-            DexiError::ContestNotOpen
-        );
-        require!(
-            clock.unix_timestamp < self.contest.start_time,
-            DexiError::EntryDeadlinePassed
-        );
+        require!(self.contest.status == ContestStatus::Open, DexiError::ContestNotOpen);
+        require!(clock.unix_timestamp < self.contest.start_time, DexiError::EntryDeadlinePassed);
 
         let user_key = self.user.key();
         let contest_key = self.contest.key();
 
-        // Single pass: deduplicate and count mint occurrences, validate full lineup
+        // Deduplicate athlete mints in a single pass and track how many tokens
+        // the user needs to stake per unique mint.
         let mut unique_mints: Vec<Pubkey> = Vec::with_capacity(LINEUP_SIZE);
         let mut mint_counts: Vec<u8> = Vec::with_capacity(LINEUP_SIZE);
 
@@ -53,54 +47,54 @@ impl<'info> EnterContest<'info> {
             require!(mint != Pubkey::default(), DexiError::InvalidLineup);
 
             if let Some(pos) = unique_mints.iter().position(|&m| m == mint) {
-                mint_counts[pos] = mint_counts[pos].checked_add(1).ok_or(DexiError::ArithmeticError)?;
+                mint_counts[pos] = mint_counts[pos]
+                    .checked_add(1)
+                    .ok_or(DexiError::ArithmeticError)?;
             } else {
                 unique_mints.push(mint);
                 mint_counts.push(1);
             }
         }
 
-        let required_accts = unique_mints.len().checked_mul(4).ok_or(DexiError::ArithmeticError)?;
-        require!(
-            remaining_accounts.len() >= required_accts,
-            DexiError::ArithmeticError
-        );
+        // Each unique mint requires 4 remaining accounts: mint, user_ata, vault, pool_pda.
+        let required_accts = unique_mints
+            .len()
+            .checked_mul(4)
+            .ok_or(DexiError::ArithmeticError)?;
+        require!(remaining_accounts.len() >= required_accts, DexiError::ArithmeticError);
 
         let mut accounts_iter = remaining_accounts.iter();
-        let mut role_counts = [0u8; 4];
+        let mut role_counts = [0u8; 4]; // [GK, DEF, MID, FWD]
 
         for (i, &mint) in unique_mints.iter().enumerate() {
             let count = mint_counts[i];
 
+            // Account order per unique mint: mint_info, user_ata, contest_vault, pool_pda
             let mint_info = next_account_info(&mut accounts_iter)?;
             require!(mint_info.key() == mint, DexiError::InvalidMint);
 
-            let user_ata = anchor_spl::associated_token::get_associated_token_address(&user_key, &mint);
-            let contest_vault = anchor_spl::associated_token::get_associated_token_address(&contest_key, &mint);
+            let expected_user_ata =
+                anchor_spl::associated_token::get_associated_token_address(&user_key, &mint);
+            let expected_contest_vault =
+                anchor_spl::associated_token::get_associated_token_address(&contest_key, &mint);
 
             let user_ata_info = next_account_info(&mut accounts_iter)?;
             let vault_info = next_account_info(&mut accounts_iter)?;
 
-            require!(user_ata_info.key() == user_ata, DexiError::InvalidMint);
-            require!(vault_info.key() == contest_vault, DexiError::InvalidMint);
+            require!(user_ata_info.key() == expected_user_ata, DexiError::InvalidMint);
+            require!(vault_info.key() == expected_contest_vault, DexiError::InvalidMint);
 
-            let user_ata_data = Account::<TokenAccount>::try_from(user_ata_info)?;
-            require!(user_ata_data.owner == user_key, DexiError::InvalidMint);
-            require!(user_ata_data.mint == mint, DexiError::InvalidMint);
+            let user_ata = Account::<TokenAccount>::try_from(user_ata_info)?;
+            require!(user_ata.owner == user_key, DexiError::InvalidMint);
+            require!(user_ata.mint == mint, DexiError::InvalidMint);
 
             let required_amount = ENTRY_TOKEN_AMOUNT
                 .checked_mul(count as u64)
                 .ok_or(DexiError::ArithmeticError)?;
-            require!(
-                user_ata_data.amount >= required_amount,
-                DexiError::ArithmeticError
-            );
+            require!(user_ata.amount >= required_amount, DexiError::ArithmeticError);
 
-            let pool_pda = Pubkey::find_program_address(
-                &[POOL_SEED, mint.as_ref()],
-                &crate::ID,
-            ).0;
-
+            // Validate the pool PDA and check it is enabled.
+            let pool_pda = Pubkey::find_program_address(&[POOL_SEED, mint.as_ref()], &crate::ID).0;
             let pool_info = next_account_info(&mut accounts_iter)?;
             require!(pool_info.key() == pool_pda, DexiError::InvalidMint);
 
@@ -118,6 +112,7 @@ impl<'info> EnterContest<'info> {
                 .checked_add(count)
                 .ok_or(DexiError::ArithmeticError)?;
 
+            // Stake tokens: transfer from user ATA to contest vault.
             token::transfer(
                 CpiContext::new(
                     self.token_program.key(),
@@ -131,6 +126,7 @@ impl<'info> EnterContest<'info> {
             )?;
         }
 
+        // Enforce minimum formation rules.
         require!(
             role_counts[0] == REQUIRED_GK
                 && role_counts[1] >= REQUIRED_DEF
@@ -143,17 +139,12 @@ impl<'info> EnterContest<'info> {
             user: user_key,
             contest: contest_key,
             athletes,
-            score: 0,
-            rank: 0,
             claimed: false,
             is_complete: true,
-            gk_count: role_counts[0],
-            def_count: role_counts[1],
-            mid_count: role_counts[2],
-            fwd_count: role_counts[3],
         });
 
-        self.contest.entry_count = self.contest
+        self.contest.entry_count = self
+            .contest
             .entry_count
             .checked_add(1)
             .ok_or(DexiError::ArithmeticError)?;

@@ -23,8 +23,6 @@ programs/dexi/
         ├── initialize_entry.rs-- Lineup init (6 players + token transfer)
         ├── finalize_entry.rs  -- Lineup completion (5 players)
         ├── lock_contest.rs    -- Lock contest at start_time
-        ├── set_scores.rs      -- Keeper score posting
-        ├── calculate_rankings.rs -- Assign ranks to entries (Phase 0)
         ├── settle_contest.rs  -- Finalize prize pool
         └── claim_reward.rs    -- Prize claim
 ```
@@ -57,20 +55,15 @@ Contest (1 per tournament)
 ├── winner_count: u8
 ├── prize_split: [u16; 10]  -- e.g., [5000, 3000, 2000, 0, ...]
 ├── escrow_vault: Pubkey
-└── settled: bool
+├── total_mint_count: u8    -- Number of unique athlete mints
+└── processed_mint_count: u8 -- Processed by keeper during lock phase
 
 UserEntry (1 per user per contest)
 ├── user: Pubkey
 ├── contest: Pubkey
 ├── athletes: [Pubkey; 11]
-├── score: i64
-├── rank: u32
 ├── claimed: bool
-├── is_complete: bool
-├── gk_count: u8
-├── def_count: u8
-├── mid_count: u8
-└── fwd_count: u8
+└── is_complete: bool
 ```
 
 ## CPMM Math
@@ -95,10 +88,12 @@ Swap fees are handled internally by the curve and accrue in vault balances.
 ## Prize Distribution
 
 On `claim_reward`:
-1. Program reads `UserEntry.score` and `UserEntry.rank`
-2. If rank ≤ `winner_count`, calculate payout from `prize_split[rank]` × `prize_pool` / 10000
-3. Transfer USDC from `escrow_vault` to user
-4. Mark `UserEntry.claimed = true`
+1. User requests to claim their prize from the backend.
+2. Backend computes their score, rank, and payout amount off-chain, and returns a transaction co-signed by the `keeper`.
+3. User submits the transaction to the program containing the `amount` to claim and the `keeper` signature.
+4. Program validates that the `keeper` signer matches the authorized `config.keeper`.
+5. Transfer USDC from `escrow_vault` to user.
+6. Mark `UserEntry.claimed = true`.
 
 ## Stack
 

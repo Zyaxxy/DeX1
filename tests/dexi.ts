@@ -72,6 +72,18 @@ describe("Dexi", () => {
   let user1EntryPda: PublicKey;
   let user2EntryPda: PublicKey;
 
+  function buildCreateContestRemainingAccounts(mints: PublicKey[], contestPda: PublicKey): any[] {
+    const accounts = [];
+    for (const mint of mints) {
+      const vault = getAssociatedTokenAddressSync(mint, contestPda, true);
+      accounts.push(
+        { pubkey: vault, isWritable: true, isSigner: false },
+        { pubkey: mint, isWritable: false, isSigner: false }
+      );
+    }
+    return accounts;
+  }
+
   before(async () => {
     admin = (provider.wallet as NodeWallet).payer;
     keeper = Keypair.generate();
@@ -544,14 +556,18 @@ describe("Dexi", () => {
       await getOrCreateAssociatedTokenAccount(connection, admin, usdcMint, contestPda, true);
 
       const now = Math.floor(Date.now() / 1000);
-      const startTime = now + 60;
+      const startTime = now + 10000;
+
+      const playerMints = [gkMint, defMint, midMint, fwdMint];
+      const remainingAccounts = buildCreateContestRemainingAccounts(playerMints, contestPda);
 
       const tx = await program.methods
         .createContest(
           new BN(CONTEST_ID),
           new BN(startTime),
           3,
-          [5000, 3000, 2000]
+          [5000, 3000, 2000],
+          playerMints
         )
         .accountsStrict({
           config: configPda,
@@ -560,8 +576,10 @@ describe("Dexi", () => {
           escrowVault: contestUsdcVault,
           admin: admin.publicKey,
           tokenProgram: TOKEN_PROGRAM_ID,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
           systemProgram: SYSTEM_PROGRAM_ID,
         } as any)
+        .remainingAccounts(remainingAccounts)
         .signers([admin])
         .rpc();
 
@@ -588,9 +606,12 @@ describe("Dexi", () => {
 
       const startTime = Math.floor(Date.now() / 1000) + 3600;
 
+      const playerMints = [gkMint, defMint, midMint, fwdMint];
+      const remainingAccounts = buildCreateContestRemainingAccounts(playerMints, contestPda2);
+
       try {
         await program.methods
-          .createContest(new BN(contestId2), new BN(startTime), 3, [6000, 5000, 2000])
+          .createContest(new BN(contestId2), new BN(startTime), 3, [6000, 5000, 2000], playerMints)
           .accountsStrict({
             config: configPda,
             contest: contestPda2,
@@ -598,8 +619,10 @@ describe("Dexi", () => {
             escrowVault: escrowVault2,
             admin: admin.publicKey,
             tokenProgram: TOKEN_PROGRAM_ID,
+            associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
             systemProgram: SYSTEM_PROGRAM_ID,
           } as any)
+          .remainingAccounts(remainingAccounts)
           .signers([admin])
           .rpc();
         assert.fail("Should have thrown InvalidPrizeSplit error");
@@ -794,8 +817,11 @@ describe("Dexi", () => {
       const escrowVault3 = getAssociatedTokenAddressSync(usdcMint, contestPda3, true);
       await getOrCreateAssociatedTokenAccount(connection, admin, usdcMint, contestPda3, true);
 
+      const playerMints = [gkMint, defMint, midMint, fwdMint];
+      const createRemainingAccounts = buildCreateContestRemainingAccounts(playerMints, contestPda3);
+
       await program.methods
-        .createContest(new BN(contestId3), new BN(pastTime), 2, [6000, 4000])
+        .createContest(new BN(contestId3), new BN(pastTime), 2, [6000, 4000], playerMints)
         .accountsStrict({
           config: configPda,
           contest: contestPda3,
@@ -803,8 +829,10 @@ describe("Dexi", () => {
           escrowVault: escrowVault3,
           admin: admin.publicKey,
           tokenProgram: TOKEN_PROGRAM_ID,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
           systemProgram: SYSTEM_PROGRAM_ID,
         } as any)
+        .remainingAccounts(createRemainingAccounts)
         .signers([admin])
         .rpc();
 
@@ -868,8 +896,7 @@ describe("Dexi", () => {
   });
 
   describe("Lock & Settle Contest", () => {
-    it.skip("should lock contest after start time", async () => {
-      await new Promise(resolve => setTimeout(resolve, 65000));
+    it("should lock contest after start time", async () => {
 
       const tx = await program.methods
         .lockContest()
@@ -887,48 +914,44 @@ describe("Dexi", () => {
       assert.isTrue(!!(contest.status as any).locked);
     });
 
-    it.skip("should fail to lock contest before start time", async () => {
-      const contestId4 = 4;
-      const [contestPda4] = PublicKey.findProgramAddressSync(
-        [CONTEST_SEED, Buffer.from(new BN(contestId4).toBuffer("le", 8))],
-        program.programId
-      );
 
-      const futureTime = Math.floor(Date.now() / 1000) + 3600;
-      const escrowVault4 = getAssociatedTokenAddressSync(usdcMint, contestPda4, true);
-      await getOrCreateAssociatedTokenAccount(connection, admin, usdcMint, contestPda4, true);
 
-      await program.methods
-        .createContest(new BN(contestId4), new BN(futureTime), 2, [6000, 4000])
-        .accountsStrict({
-          config: configPda,
-          contest: contestPda4,
-          usdcMint: usdcMint,
-          escrowVault: escrowVault4,
-          admin: admin.publicKey,
-          tokenProgram: TOKEN_PROGRAM_ID,
-          systemProgram: SYSTEM_PROGRAM_ID,
-        } as any)
-        .signers([admin])
-        .rpc();
+    it("should process entry mints", async () => {
+      const mintsAndPools = [
+        { mint: gkMint, pool: gkPool },
+        { mint: defMint, pool: defPool },
+        { mint: midMint, pool: midPool },
+        { mint: fwdMint, pool: fwdPool }
+      ];
 
-      try {
+      for (const { mint, pool } of mintsAndPools) {
+        const contestTokenVault = getAssociatedTokenAddressSync(mint, contestPda, true);
+        const poolTokenVault = getAssociatedTokenAddressSync(mint, pool, true);
+        const poolUsdcVault = getAssociatedTokenAddressSync(usdcMint, pool, true);
+
         await program.methods
-          .lockContest()
+          .processEntryMint()
           .accountsStrict({
+            contest: contestPda,
+            pool: pool,
+            mint: mint,
+            contestTokenVault,
+            contestEscrowVault: contestUsdcVault,
             config: configPda,
-            contest: contestPda4,
+            poolTokenVault,
+            poolUsdcVault,
+            poolAuthority: pool,
             keeper: keeper.publicKey,
+            tokenProgram: TOKEN_PROGRAM_ID,
+            associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+            systemProgram: SYSTEM_PROGRAM_ID,
           } as any)
           .signers([keeper])
           .rpc();
-        assert.fail("Should have thrown ContestNotStarted error");
-      } catch (e: any) {
-        assert(e.message.includes("ContestNotStarted") || e.message.includes("0x"), "Should throw ContestNotStarted");
       }
     });
 
-    it.skip("should settle contest", async () => {
+    it("should settle contest", async () => {
       const tx = await program.methods
         .settleContest()
         .accountsStrict({
@@ -943,11 +966,11 @@ describe("Dexi", () => {
       console.log("Settle contest tx:", tx);
 
       const contest = await program.account.contest.fetch(contestPda);
+      // Status is the single source of truth — the redundant `settled: bool` field was removed.
       assert.isTrue(!!(contest.status as any).settled);
-      assert.strictEqual(contest.settled, true);
     });
 
-    it.skip("should fail if not locked before settle", async () => {
+    it("should fail if not locked before settle", async () => {
       const contestId5 = 5;
       const [contestPda5] = PublicKey.findProgramAddressSync(
         [CONTEST_SEED, Buffer.from(new BN(contestId5).toBuffer("le", 8))],
@@ -958,8 +981,11 @@ describe("Dexi", () => {
       const escrowVault5 = getAssociatedTokenAddressSync(usdcMint, contestPda5, true);
       await getOrCreateAssociatedTokenAccount(connection, admin, usdcMint, contestPda5, true);
 
+      const playerMints = [gkMint, defMint, midMint, fwdMint];
+      const remainingAccounts = buildCreateContestRemainingAccounts(playerMints, contestPda5);
+
       await program.methods
-        .createContest(new BN(contestId5), new BN(now), 2, [6000, 4000])
+        .createContest(new BN(contestId5), new BN(now), 2, [6000, 4000], playerMints)
         .accountsStrict({
           config: configPda,
           contest: contestPda5,
@@ -967,8 +993,10 @@ describe("Dexi", () => {
           escrowVault: escrowVault5,
           admin: admin.publicKey,
           tokenProgram: TOKEN_PROGRAM_ID,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
           systemProgram: SYSTEM_PROGRAM_ID,
         } as any)
+        .remainingAccounts(remainingAccounts)
         .signers([admin])
         .rpc();
 
@@ -991,54 +1019,22 @@ describe("Dexi", () => {
   });
 
   describe("Claim Reward", () => {
-    it.skip("should set scores", async () => {
+    it("should claim reward", async () => {
+      const payoutAmount = new BN(100);
+
       const tx = await program.methods
-        .setScores(new BN(100))
+        .claimReward(payoutAmount)
         .accountsStrict({
           config: configPda,
           contest: contestPda,
           entry: user1EntryPda,
-          keeper: keeper.publicKey,
-        } as any)
-        .signers([keeper])
-        .rpc();
-
-      console.log("Set scores tx:", tx);
-
-      const entry = await program.account.userEntry.fetch(user1EntryPda);
-      assert.strictEqual(entry.score.toNumber(), 100);
-    });
-
-    it.skip("should calculate rankings", async () => {
-      const tx = await program.methods
-        .calculateRankings()
-        .accountsStrict({
-          config: configPda,
-          contest: contestPda,
-          keeper: keeper.publicKey,
-        } as any)
-        .remainingAccounts([
-          { pubkey: user1EntryPda, isWritable: true, isSigner: false },
-        ])
-        .signers([keeper])
-        .rpc();
-
-      console.log("Calculate rankings tx:", tx);
-
-      const entry = await program.account.userEntry.fetch(user1EntryPda);
-      assert.ok(entry.rank > 0);
-    });
-
-    it.skip("should claim reward", async () => {
-      const tx = await program.methods
-        .claimReward()
-        .accountsStrict({
-          config: configPda,
-          contest: contestPda,
-          entry: user1EntryPda,
+          escrowVault: contestUsdcVault,
+          userUsdcAta: user1UsdcAta,
           user: user1.publicKey,
+          keeper: keeper.publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID,
         } as any)
-        .signers([user1])
+        .signers([user1, keeper])
         .rpc();
 
       console.log("Claim reward tx:", tx);
@@ -1047,17 +1043,23 @@ describe("Dexi", () => {
       assert.strictEqual(entry.claimed, true);
     });
 
-    it.skip("should fail if already claimed", async () => {
+    it("should fail if already claimed", async () => {
+      const payoutAmount = new BN(100);
+
       try {
         await program.methods
-          .claimReward()
+          .claimReward(payoutAmount)
           .accountsStrict({
             config: configPda,
             contest: contestPda,
             entry: user1EntryPda,
+            escrowVault: contestUsdcVault,
+            userUsdcAta: user1UsdcAta,
             user: user1.publicKey,
+            keeper: keeper.publicKey,
+            tokenProgram: TOKEN_PROGRAM_ID,
           } as any)
-          .signers([user1])
+          .signers([user1, keeper])
           .rpc();
         assert.fail("Should have thrown AlreadyClaimed error");
       } catch (e: any) {

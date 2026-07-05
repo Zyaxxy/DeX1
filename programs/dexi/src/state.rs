@@ -1,6 +1,8 @@
 use anchor_lang::prelude::*;
 use crate::constants::*;
 
+// ── Role enum ─────────────────────────────────────────────────────────────────
+
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Eq, InitSpace)]
 pub enum AthleteRole {
     GK,
@@ -9,6 +11,8 @@ pub enum AthleteRole {
     FWD,
 }
 
+// ── Contest lifecycle ─────────────────────────────────────────────────────────
+
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Eq, InitSpace)]
 pub enum ContestStatus {
     Open,
@@ -16,6 +20,9 @@ pub enum ContestStatus {
     Settled,
 }
 
+// ── Accounts ──────────────────────────────────────────────────────────────────
+
+/// Global program configuration; one per deployment.
 #[account]
 #[derive(InitSpace)]
 pub struct AdminConfig {
@@ -26,6 +33,7 @@ pub struct AdminConfig {
     pub treasury: Pubkey,
 }
 
+/// On-chain representation of a single tradable athlete token pool.
 #[account]
 #[derive(InitSpace)]
 pub struct AthletePool {
@@ -37,6 +45,7 @@ pub struct AthletePool {
     pub enabled: bool,
 }
 
+/// A fantasy contest created by the admin.
 #[account]
 #[derive(InitSpace)]
 pub struct Contest {
@@ -48,23 +57,24 @@ pub struct Contest {
     pub entry_count: u64,
     pub prize_pool: u64,
     pub winner_count: u8,
+    /// Basis-point share for each prize rank; zeroed slots are unused.
     pub prize_split: [u16; MAX_PRIZE_SPLIT],
     pub escrow_vault: Pubkey,
-    pub settled: bool,
+    /// Total number of athlete mints registered for this contest (set at creation).
+    pub total_mint_count: u8,
+    /// Number of mints processed by `process_entry_mint` so far.
+    /// Must equal `total_mint_count` before the contest can be settled.
+    pub processed_mint_count: u8,
 }
 
+/// A single user's lineup entry for a contest.
 #[account]
 #[derive(InitSpace)]
 pub struct UserEntry {
     pub user: Pubkey,
     pub contest: Pubkey,
     pub athletes: [Pubkey; LINEUP_SIZE],
-    pub score: i64,
-    pub rank: u32,
     pub claimed: bool,
+    /// True once the full 11-player lineup has been validated and staked.
     pub is_complete: bool,
-    pub gk_count: u8,
-    pub def_count: u8,
-    pub mid_count: u8,
-    pub fwd_count: u8,
 }

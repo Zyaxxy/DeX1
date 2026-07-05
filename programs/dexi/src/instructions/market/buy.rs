@@ -6,33 +6,37 @@ use constant_product_curve::{ConstantProduct, LiquidityPair};
 
 use crate::constants::*;
 use crate::error::DexiError;
-use crate::state::AdminConfig;
+use crate::state::{AdminConfig, AthletePool};
 
 #[derive(Accounts)]
 pub struct Buy<'info> {
     #[account(seeds = [ADMIN_SEED], bump)]
     pub config: Box<Account<'info, AdminConfig>>,
     #[account(mut, seeds = [POOL_SEED, pool.mint.as_ref()], bump)]
-    pub pool: Box<Account<'info, crate::state::AthletePool>>,
-    #[account(mut,
+    pub pool: Box<Account<'info, AthletePool>>,
+    #[account(
+        mut,
         associated_token::mint = config.usdc_mint,
         associated_token::authority = user,
         associated_token::token_program = token_program,
     )]
     pub user_usdc_ata: Box<InterfaceAccount<'info, TokenAccount>>,
-    #[account(mut,
+    #[account(
+        mut,
         associated_token::mint = pool.mint,
         associated_token::authority = user,
         associated_token::token_program = token_program,
     )]
     pub user_token_ata: Box<InterfaceAccount<'info, TokenAccount>>,
-    #[account(mut,
+    #[account(
+        mut,
         associated_token::mint = pool.mint,
         associated_token::authority = pool_authority,
         associated_token::token_program = token_program,
     )]
     pub pool_token_vault: Box<InterfaceAccount<'info, TokenAccount>>,
-    #[account(mut,
+    #[account(
+        mut,
         associated_token::mint = config.usdc_mint,
         associated_token::authority = pool_authority,
         associated_token::token_program = token_program,
@@ -53,48 +57,57 @@ impl<'info> Buy<'info> {
         require!(self.pool.enabled, DexiError::PoolDisabled);
         require!(usdc_amount > 0, DexiError::InvalidAmount);
 
-        let token_reserve = self.pool_token_vault.amount;
-        let usdc_reserve = self.pool_usdc_vault.amount;
-
+        // price = usdc_reserve / token_reserve  (constant-product)
         let mut curve = ConstantProduct::init(
-            token_reserve,
-            usdc_reserve,
+            self.pool_token_vault.amount, // X reserve
+            self.pool_usdc_vault.amount,  // Y reserve
             0,
             self.config.swap_fee_bps,
             Some(6),
-        ).map_err(DexiError::from)?;
+        )
+        .map_err(DexiError::from)?;
 
-        let swap_result = curve.swap(LiquidityPair::Y, usdc_amount, 1)
+        // Swap USDC (Y) in → athlete tokens (X) out
+        let swap_result = curve
+            .swap(LiquidityPair::Y, usdc_amount, 1)
             .map_err(DexiError::from)?;
 
-        let pool_mint = self.pool.mint;
-        let pool_seeds: &[&[&[u8]]] = &[&[POOL_SEED, pool_mint.as_ref(), &[bumps.pool]]];
+        let pool_seeds: &[&[&[u8]]] =
+            &[&[POOL_SEED, self.pool.mint.as_ref(), &[bumps.pool]]];
 
-        self.deposit_usdc(swap_result.deposit)?;
-        self.withdraw_tokens(swap_result.withdraw, pool_seeds)?;
+        // USDC flows in from user, tokens flow out from pool vault.
+        self.transfer_user_to_pool_usdc(swap_result.deposit)?;
+        self.transfer_pool_to_user_tokens(swap_result.withdraw, pool_seeds)?;
 
         Ok(())
     }
 
-    pub fn deposit_usdc(&self, amount: u64) -> Result<()> {
-        let cpi_program = self.token_program.key();
-        let cpi_accounts = Transfer {
-            from: self.user_usdc_ata.to_account_info(),
-            to: self.pool_usdc_vault.to_account_info(),
-            authority: self.user.to_account_info(),
-        };
-        let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
-        transfer(cpi_ctx, amount)
+    fn transfer_user_to_pool_usdc(&self, amount: u64) -> Result<()> {
+        transfer(
+            CpiContext::new(
+                self.token_program.key(),
+                Transfer {
+                    from: self.user_usdc_ata.to_account_info(),
+                    to: self.pool_usdc_vault.to_account_info(),
+                    authority: self.user.to_account_info(),
+                },
+            ),
+            amount,
+        )
     }
 
-    pub fn withdraw_tokens(&self, amount: u64, seeds: &[&[&[u8]]]) -> Result<()> {
-        let cpi_program = self.token_program.key();
-        let cpi_accounts = Transfer {
-            from: self.pool_token_vault.to_account_info(),
-            to: self.user_token_ata.to_account_info(),
-            authority: self.pool_authority.to_account_info(),
-        };
-        let cpi_ctx = CpiContext::new_with_signer(cpi_program, cpi_accounts, seeds);
-        transfer(cpi_ctx, amount)
+    fn transfer_pool_to_user_tokens(&self, amount: u64, seeds: &[&[&[u8]]]) -> Result<()> {
+        transfer(
+            CpiContext::new_with_signer(
+                self.token_program.key(),
+                Transfer {
+                    from: self.pool_token_vault.to_account_info(),
+                    to: self.user_token_ata.to_account_info(),
+                    authority: self.pool_authority.to_account_info(),
+                },
+                seeds,
+            ),
+            amount,
+        )
     }
 }

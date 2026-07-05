@@ -67,5 +67,6 @@ Where `athlete_points` is the sum of all scoring events they accumulated during 
 - Keeper fetches match stats from a sports data API (e.g., Sportradar, Opta)
 - Keeper computes each athlete's total points using the rules above
 - Keeper computes each user's total score by summing their 11 athletes' points
-- Keeper calls `set_scores` on the `Contest` account to write scores to each `UserEntry`
-- No on-chain oracle reads needed for MVP scoring; Switchboard integration is future scope
+- Backend computes final rankings and the exact USDC payout for each winner
+- When a user wants to claim their prize, the Keeper co-signs the `claim_reward` transaction with the exact USDC `amount` they won
+- No on-chain score storage or oracle reads needed for the MVP

@@ -8,7 +8,7 @@ The MVP implements a self-contained fantasy football platform on Solana. A singl
 - Contest creation with time-locked entry windows
 - Lineup submission with role-based constraints
 - Token burn + swap-to-USDC prize pool mechanics
-- Keeper-driven scoring and prize distribution
+- Keeper-driven tournament lifecycle and prize distribution
 
 ## Architecture
 
@@ -27,7 +27,7 @@ The MVP implements a self-contained fantasy football platform on Solana. A singl
 | `AdminConfig` | Global authority, keeper, USDC mint, swap fee config, treasury |
 | `AthletePool` | CPMM reserves, mint, vaults, role, name |
 | `Contest` | Tournament state, timers, escrow, entry count, prize split |
-| `UserEntry` | User's 11-athlete lineup, score, rank, claim status |
+| `UserEntry` | User's 11-athlete lineup, claim status |
 
 ## Instructions
 
@@ -43,10 +43,8 @@ The MVP implements a self-contained fantasy football platform on Solana. A singl
 | `finalize_entry` | `finalize_entry.rs` | User | Complete entry with 5 players, validate full lineup |
 | `lock_contest` | `lock_contest.rs` | Keeper | Lock contest at start_time (auth required) |
 | `process_entry_mint` | `market/` | Keeper | Swap 90% vault tokens → USDC, burn 10% |
-| `set_scores` | `set_scores.rs` | Keeper | Write scores to each `UserEntry` |
-| `calculate_rankings` | `calculate_rankings.rs` | Keeper | Assign ranks to entries (batch verify sorted) |
 | `settle_contest` | `settle_contest.rs` | Keeper | Finalize prize pool from escrow |
-| `claim_reward` | `claim_reward.rs` | User | Claim USDC prize from escrow |
+| `claim_reward` | `claim_reward.rs` | User+Keeper | Claim USDC prize from escrow (requires keeper co-signature) |
 
 ## Contest Flow
 
@@ -54,18 +52,17 @@ The MVP implements a self-contained fantasy football platform on Solana. A singl
 ┌─────────────┐    ┌───────────────┐    ┌──────────────┐
 │ ENTRY PHASE │    │ LOCK PHASE    │    │ SETTLEMENT   │
 │             │    │               │    │              │
-│ Users enter │    │ Clock hits    │    │ Keeper posts │
-│ lineups via │───▶│ start_time    │───▶│ scores to    │
-│ init_entry  │    │               │    │ UserEntry    │
-│ + finalize  │    │ lock_contest  │    │              │
-│ Tokens go   │    │ (keeper auth) │    │ calculate_   │
-│ to vault    │    │               │    │ rankings     │
-│             │    │ Keeper swaps  │    │ (batch assign│
-│             │    │ 90%→USDC via  │    │  ranks 0-N)  │
+│ Users enter │    │ Clock hits    │    │ Keeper calls │
+│ lineups via │───▶│ start_time    │───▶│ settle_cont  │
+│ init_entry  │    │               │    │ to finalize  │
+│ + finalize  │    │ lock_contest  │    │ prize pool   │
+│ Tokens go   │    │ (keeper auth) │    │              │
+│ to vault    │    │               │    │              │
+│             │    │ Keeper swaps  │    │              │
+│             │    │ 90%→USDC via  │    │              │
 │             │    │ process_entr. │    │              │
-│             │    │ (keeper auth) │    │ settle_cont  │
-│             │    │               │    │ finalizes    │
-│             │    │ Burn 10%      │    │ prize pool   │
+│             │    │               │    │              │
+│             │    │ Burn 10%      │    │              │
 │             │    │               │    │              │
 └─────────────┘    └───────────────┘    └──────┬───────┘
                                                  │
@@ -75,10 +72,10 @@ The MVP implements a self-contained fantasy football platform on Solana. A singl
                                           │              │
                                           │ User calls   │
                                           │ claim_reward │
+                                          │ with amount  │
                                           │              │
-                                          │ Program reads│
-                                          │ UserEntry    │
-                                          │ rank         │
+                                          │ Keeper       │
+                                          │ co-signs tx  │
                                           │              │
                                           │ Pays USDC    │
                                           │ from escrow  │
@@ -102,7 +99,7 @@ Top N winners split the Tournament Escrow USDC. N and split ratios are configura
 2. CPMM: `create_pool`, `buy`, `sell` (in `instructions/market/`)
 3. Contest: `create_contest`, `initialize_entry_with_tokens` + `finalize_entry`
 4. Lock: `lock_contest`, `process_entry_mint` (swap + burn)
-5. Settlement: `set_scores`, `settle_contest`, `claim_reward`
+5. Settlement: `settle_contest`, `claim_reward` (with keeper signing)
 6. Keeper: off-chain TypeScript bot
 7. Tests: Mocha/TypeScript integration tests
 8. Frontend: Next.js + Privy + `@solana/kit`

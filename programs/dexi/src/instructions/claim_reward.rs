@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 use crate::constants::*;
 use crate::error::DexiError;
-use crate::state::{AdminConfig, Contest, UserEntry};
+use crate::state::{AdminConfig, Contest, ContestStatus, UserEntry};
 
 #[derive(Accounts)]
 pub struct ClaimReward<'info> {
@@ -10,39 +10,42 @@ pub struct ClaimReward<'info> {
     pub config: Box<Account<'info, AdminConfig>>,
     #[account(mut, seeds = [CONTEST_SEED, &contest.id.to_le_bytes()], bump = contest.bump)]
     pub contest: Box<Account<'info, Contest>>,
-    #[account(mut, constraint = entry.user == user.key(), constraint = entry.contest == contest.key())]
+    #[account(
+        mut,
+        constraint = entry.user == user.key(),
+        constraint = entry.contest == contest.key(),
+    )]
     pub entry: Box<Account<'info, UserEntry>>,
-    #[account(mut, constraint = escrow_vault.owner == contest.key(), constraint = escrow_vault.mint == config.usdc_mint)]
+    #[account(
+        mut,
+        constraint = escrow_vault.owner == contest.key(),
+        constraint = escrow_vault.mint == config.usdc_mint,
+    )]
     pub escrow_vault: Box<Account<'info, TokenAccount>>,
-    #[account(mut, constraint = user_usdc_ata.owner == user.key(), constraint = user_usdc_ata.mint == config.usdc_mint)]
+    #[account(
+        mut,
+        constraint = user_usdc_ata.owner == user.key(),
+        constraint = user_usdc_ata.mint == config.usdc_mint,
+    )]
     pub user_usdc_ata: Box<Account<'info, TokenAccount>>,
     pub user: Signer<'info>,
+    pub keeper: Signer<'info>,
     pub token_program: Program<'info, Token>,
 }
 
 impl<'info> ClaimReward<'info> {
-    pub fn claim(&mut self) -> Result<()> {
-        let contest = &self.contest;
-        let entry = &self.entry;
+    pub fn claim(&mut self, amount: u64) -> Result<()> {
+        require!(self.keeper.key() == self.config.keeper, DexiError::NotAdmin);
+        require!(self.contest.status == ContestStatus::Settled, DexiError::NotSettled);
+        require!(!self.entry.claimed, DexiError::AlreadyClaimed);
+        require!(amount > 0, DexiError::InvalidAmount);
+        
+        let payout = amount;
 
-        require!(contest.settled, DexiError::NotSettled);
-        require!(!entry.claimed, DexiError::AlreadyClaimed);
-
-        let rank = entry.rank as usize;
-        require!(rank < contest.winner_count as usize, DexiError::NoPrize);
-
-        let payout = (contest.prize_pool as u128)
-            .checked_mul(contest.prize_split[rank] as u128)
-            .ok_or(DexiError::ArithmeticError)?
-            .checked_div(BASIS_POINTS as u128)
-            .ok_or(DexiError::ArithmeticError)? as u64;
-
-        require!(payout > 0, DexiError::NoPrize);
-
-        let contest_seeds = &[
+        let contest_seeds: &[&[u8]] = &[
             CONTEST_SEED,
-            &contest.id.to_le_bytes(),
-            &[contest.bump],
+            &self.contest.id.to_le_bytes(),
+            &[self.contest.bump],
         ];
 
         token::transfer(
@@ -58,9 +61,7 @@ impl<'info> ClaimReward<'info> {
             payout,
         )?;
 
-        let entry = &mut self.entry;
-        entry.claimed = true;
-
+        self.entry.claimed = true;
         Ok(())
     }
 }

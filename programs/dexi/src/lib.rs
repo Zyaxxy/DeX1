@@ -19,11 +19,7 @@ pub mod dexi {
         ctx.accounts.init(swap_fee_bps, treasury, keeper)
     }
 
-    pub fn create_pool(
-        ctx: Context<CreatePool>,
-        name: String,
-        role: AthleteRole,
-    ) -> Result<()> {
+    pub fn create_pool(ctx: Context<CreatePool>, name: String, role: AthleteRole) -> Result<()> {
         ctx.accounts.init(name, role, &ctx.bumps)
     }
 
@@ -44,29 +40,34 @@ pub mod dexi {
         ctx.accounts.execute(token_amount, &ctx.bumps)
     }
 
-    pub fn create_contest(
-        ctx: Context<CreateContest>,
+    /// Creates a contest and pre-initialises per-athlete vault ATAs in one transaction.
+    ///
+    /// `player_mints` — all athlete mint addresses for this contest.
+    /// `remaining_accounts` — pairs of `[vault_ata, mint_account_info]` for each mint.
+    pub fn create_contest<'a>(
+        ctx: Context<'a, CreateContest<'a>>,
         id: u64,
         start_time: i64,
         winner_count: u8,
         prize_split: Vec<u16>,
+        player_mints: Vec<Pubkey>,
     ) -> Result<()> {
-        ctx.accounts.init(id, start_time, winner_count, prize_split, &ctx.bumps)
+        ctx.accounts.init(
+            id,
+            start_time,
+            winner_count,
+            prize_split,
+            player_mints,
+            &ctx.bumps,
+            ctx.remaining_accounts,
+        )
     }
 
     pub fn enter_contest<'a>(
         ctx: Context<'a, EnterContest<'a>>,
         athletes: [Pubkey; LINEUP_SIZE],
     ) -> Result<()> {
-        ctx.accounts
-            .enter(athletes, &ctx.bumps, ctx.remaining_accounts)
-    }
-
-    pub fn setup_contest<'a>(
-        ctx: Context<'a, SetupContest<'a>>,
-        player_mints: Vec<Pubkey>,
-    ) -> Result<()> {
-        ctx.accounts.setup(player_mints, &ctx.bumps, ctx.remaining_accounts)
+        ctx.accounts.enter(athletes, ctx.remaining_accounts)
     }
 
     pub fn lock_contest(ctx: Context<LockContest>) -> Result<()> {
@@ -74,24 +75,14 @@ pub mod dexi {
     }
 
     pub fn process_entry_mint(ctx: Context<ProcessEntryMint>) -> Result<()> {
-        ctx.accounts.process(&ctx.bumps)
-    }
-
-    pub fn set_scores(ctx: Context<SetScores>, score: i64) -> Result<()> {
-        ctx.accounts.set(score)
+        ctx.accounts.process()
     }
 
     pub fn settle_contest(ctx: Context<SettleContest>) -> Result<()> {
         ctx.accounts.settle()
     }
 
-    pub fn claim_reward(ctx: Context<ClaimReward>) -> Result<()> {
-        ctx.accounts.claim()
-    }
-
-    pub fn calculate_rankings<'a>(
-        ctx: Context<'a, CalculateRankings<'a>>,
-    ) -> Result<()> {
-        ctx.accounts.calculate(ctx.remaining_accounts)
+    pub fn claim_reward(ctx: Context<ClaimReward>, amount: u64) -> Result<()> {
+        ctx.accounts.claim(amount)
     }
 }
