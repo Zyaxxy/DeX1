@@ -632,7 +632,7 @@ describe("Dexi", () => {
     });
   });
 
-  describe("Enter Contest (Single-Step via v0+ALT)", () => {
+  describe("Enter Contest", () => {
     let lookupTableAccount: any;
 
     function getPoolMap(): Record<string, PublicKey> {
@@ -703,7 +703,7 @@ describe("Dexi", () => {
 
       await new Promise(resolve => setTimeout(resolve, 1500));
 
-      lookupTableAccount = (await connection.getAddressLookupTable(lutAddress, "confirmed")).value!;
+      lookupTableAccount = (await connection.getAddressLookupTable(lutAddress, { commitment: "confirmed" })).value!;
     });
 
     it("should create entry with all 11 players in single transaction", async () => {
@@ -724,7 +724,7 @@ describe("Dexi", () => {
 
       const enterIx = await program.methods
         .enterContest(fullLineup)
-        .accounts({
+        .accountsStrict({
           config: configPda,
           contest: contestPda,
           entry: user1EntryPda,
@@ -776,7 +776,7 @@ describe("Dexi", () => {
       try {
         const enterIx = await program.methods
           .enterContest(invalidLineup)
-          .accounts({
+          .accountsStrict({
             config: configPda,
             contest: contestPda,
             entry: user2EntryPda,
@@ -864,7 +864,7 @@ describe("Dexi", () => {
       try {
         const enterIx = await program.methods
           .enterContest(lineup)
-          .accounts({
+          .accountsStrict({
             config: configPda,
             contest: contestPda3,
             entry: user3EntryPda,
