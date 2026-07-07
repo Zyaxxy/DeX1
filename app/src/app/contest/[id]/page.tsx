@@ -9,14 +9,18 @@ import { PublicKey } from '@solana/web3.js';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { WalletButton } from '@/components/wallet-button';
-import { connection, ROLE_LABELS, ROLE_COLORS, ROLE_REQUIREMENTS, LINEUP_SIZE, formatTimestamp, formatUSDC } from '@/lib/program/client';
+import { WalletButton } from '@/solana/components/wallet-button';
+import { connection, rpc, PROGRAM_ID, ROLE_LABELS, CONTEST_STATUS_LABELS, ROLE_COLORS, CONTEST_STATUS_COLORS, formatUSDC, formatTimestamp, ROLE_REQUIREMENTS, LINEUP_SIZE } from '@/solana/client';
 import { toast } from 'sonner';
 
+import { decodeAthletePool, ATHLETE_POOL_DISCRIMINATOR, decodeContest, CONTEST_DISCRIMINATOR, findContestPda, AthleteRole, ContestStatus } from '@dexi/sdk';
+import { getBase58Decoder } from '@solana/kit';
+
 interface Athlete {
-  mint: PublicKey;
+  mint: string;
   name: string;
   role: number;
+  poolAddress: string;
 }
 
 interface ContestData {
@@ -28,39 +32,13 @@ interface ContestData {
   winnerCount: number;
   prizeSplit: number[];
   settled: boolean;
-}
-
-function getAvailableAthletes(): Athlete[] {
-  return [
-    { mint: new PublicKey('A4B2xZJ8cFZ7Y2vL4NpT9rMk6H8vK3fE6wXy2sAB'), name: 'Erling Haaland', role: 3 },
-    { mint: new PublicKey('B5C3yA9dHG8wAL6zM3OpT0sNlO7iH9wL4gF7yB3tCD'), name: 'Kevin De Bruyne', role: 2 },
-    { mint: new PublicKey('C6D4zB0eIH9xBM7aN4PqU1tOpP8jK0iI5hH8gC4uDE'), name: 'Mohamed Salah', role: 3 },
-    { mint: new PublicKey('D7E5aC1fJI0yCN8bO5QrV2uPqQ9kL1jJ6iI9hD5vEF'), name: 'Virgil van Dijk', role: 1 },
-    { mint: new PublicKey('E8F6bD2gJK1zDO9cP6RvW3rRqR0kL2kK7jJ0iE6wFG'), name: 'Alisson Becker', role: 0 },
-    { mint: new PublicKey('F9G7cE3hKL2zEO0dQ7SwX4sSrS1lL3mL8kK1jF7xGH'), name: 'Bruno Fernandes', role: 2 },
-    { mint: new PublicKey('G0H8dF4iML3zAP1eR8TxY5tSsT2mM4nL9lL2kG8yHI'), name: 'Harry Kane', role: 3 },
-    { mint: new PublicKey('H1I9eG5jMN4zBQ2fS9UyZ6uUtU3nN5oM0mM3lH9zIJ'), name: 'Son Heung-min', role: 3 },
-    { mint: new PublicKey('J2K0fH6kNN5zCR3gT0VzW7vUvV4oO6pN1oN4kM0zJK'), name: 'Mohamed Amra', role: 1 },
-    { mint: new PublicKey('K3L1gI7lOO6zDS4hU1W0X8wWwW5pP7oO2pO5kN1zKL'), name: 'Trent Alexander-Arnold', role: 1 },
-    { mint: new PublicKey('L4M2hJ8mPP7zET5iV2X1Y9xXxX6qQ8pP3pP6kO2zLM'), name: 'Robert Lewandowski', role: 3 },
-    { mint: new PublicKey('M5N3iK9nQQ8zFU6jW3Y2Z0yYyY7rR9qQ4qQ7lP3zMN'), name: 'Karim Benzema', role: 3 },
-    { mint: new PublicKey('N6O4jL0oRR9zGV7kX4Z3A1zZzZ8sS0rR5rR8mQ4zNO'), name: 'Luka Modric', role: 2 },
-    { mint: new PublicKey('O7P5kM1pSS0zHW8lY5Z4B2aAaA9tT1sS6sS9nR5zOP'), name: 'Toni Kroos', role: 2 },
-    { mint: new PublicKey('P8Q6lN2qTT1zIX9mZ6Z5C3bBbB0uU2tT7tT0oS6zPQ'), name: 'Manuel Neuer', role: 0 },
-  ];
-}
-
-function getMockContests(): Record<number, ContestData> {
-  return {
-    1: { id: 1, startTime: Math.floor(Date.now() / 1000) + 86400, status: 0, entryCount: 42, prizePool: BigInt(5000000), winnerCount: 3, prizeSplit: [50, 30, 20], settled: false },
-    2: { id: 2, startTime: Math.floor(Date.now() / 1000) - 3600, status: 1, entryCount: 128, prizePool: BigInt(12500000), winnerCount: 5, prizeSplit: [40, 25, 15, 12, 8], settled: false },
-  };
+  addressLookupTable: string;
 }
 
 function ContestDetailContent() {
   const params = useParams();
   const contestId = params?.id ? parseInt(params.id as string) : 1;
-  const { connected, publicKey } = useWallet();
+  const { connected, publicKey, signTransaction } = useWallet();
   const { setVisible } = useWalletModal();
   const [contest, setContest] = useState<ContestData | null>(null);
   const [selectedAthletes, setSelectedAthletes] = useState<Athlete[]>([]);
@@ -68,12 +46,62 @@ function ContestDetailContent() {
   const [availableAthletes, setAvailableAthletes] = useState<Athlete[]>([]);
 
   useEffect(() => {
-    setAvailableAthletes(getAvailableAthletes());
+    async function fetchAthletes() {
+      try {
+        const response = await rpc.getProgramAccounts(PROGRAM_ID.toBase58() as any, {
+          filters: [{ memcmp: { offset: BigInt(0), encoding: 'base58', bytes: getBase58Decoder().decode(ATHLETE_POOL_DISCRIMINATOR) as any } }]
+        }).send();
+
+        setAvailableAthletes(response.map((account) => {
+          const decoded = decodeAthletePool({
+            address: account.pubkey,
+            data: new Uint8Array(Buffer.from(account.account.data[0], account.account.data[1] as any)),
+            exists: true,
+          } as any).data;
+
+          return { mint: decoded.mint.toString(), name: decoded.name, role: decoded.role, poolAddress: account.pubkey };
+        }));
+      } catch (err) {
+        console.error("Failed to fetch athletes:", err);
+      }
+    }
+    fetchAthletes();
   }, []);
 
   useEffect(() => {
-    const contests = getMockContests();
-    setContest(contests[contestId] || null);
+    async function fetchContest() {
+      try {
+        const [contestPda] = await findContestPda({ id: contestId });
+        const response = await rpc.getAccountInfo(contestPda, { commitment: 'confirmed' }).send();
+        
+        if (!response || !response.value) return;
+
+        const decoded = decodeContest({
+          address: contestPda,
+          data: new Uint8Array(Buffer.from(response.value.data[0], response.value.data[1] as any)),
+          exists: true,
+        } as any).data;
+        
+        let status = 0;
+        if (decoded.status === ContestStatus.Locked) status = 1;
+        else if (decoded.status === ContestStatus.Settled) status = 2;
+
+        setContest({
+          id: Number(decoded.id),
+          startTime: Number(decoded.startTime),
+          status,
+          entryCount: Number(decoded.entryCount),
+          prizePool: decoded.prizePool,
+          winnerCount: decoded.winnerCount,
+          prizeSplit: decoded.prizeSplit.slice(0, decoded.winnerCount),
+          settled: decoded.status === ContestStatus.Settled,
+          addressLookupTable: decoded.addressLookupTable.toString(),
+        });
+      } catch (err) {
+        console.error("Failed to fetch contest:", err);
+      }
+    }
+    fetchContest();
   }, [contestId]);
 
   const roleCounts = useMemo(() => {
@@ -112,34 +140,107 @@ function ContestDetailContent() {
       toast.error('Lineup is full');
       return;
     }
-    if (selectedAthletes.some(a => a.mint.equals(athlete.mint))) {
+    if (selectedAthletes.some(a => a.mint === athlete.mint)) {
       toast.error('Already in lineup');
       return;
     }
     setSelectedAthletes([...selectedAthletes, athlete]);
   };
 
-  const handleRemoveAthlete = (mint: PublicKey) => {
-    setSelectedAthletes(selectedAthletes.filter(a => !a.mint.equals(mint)));
+  const removeAthlete = (mint: string) => {
+    setSelectedAthletes(selectedAthletes.filter(a => a.mint !== mint));
   };
 
   const handleEnterContest = async () => {
-    if (!connected || !publicKey) {
+    if (!connected || !publicKey || !signTransaction) {
       toast.error('Please connect your wallet');
       return;
     }
-    if (!isValidLineup) {
-      toast.error('Please complete your lineup');
+
+    if (selectedAthletes.length !== 11) {
+      toast.error('You must select exactly 11 athletes');
       return;
     }
 
     setLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      toast.success('Successfully entered the contest!');
-      setSelectedAthletes([]);
+      const { AddressLookupTableProgram, TransactionMessage, VersionedTransaction, PublicKey, SystemProgram } = await import('@solana/web3.js');
+      const { getAssociatedTokenAddressSync } = await import('@solana/spl-token');
+      const { getEnterContestInstruction, findConfigPda, findEntryPda, findContestPda } = await import('@dexi/sdk');
+
+      const userKey = new PublicKey(publicKey.toString());
+      const [contestPda] = await findContestPda({ id: contestId });
+      const contestKey = new PublicKey(contestPda);
+      const [configPda] = await findConfigPda();
+      const [entryPda] = await findEntryPda({ contest: contestKey.toString() as any, user: userKey.toString() as any });
+
+      // Unique mints in lineup
+      const uniqueMints = Array.from(new Set(selectedAthletes.map(a => a.mint)));
+
+      const remainingAccounts = [];
+
+      for (const mintStr of uniqueMints) {
+        const mintKey = new PublicKey(mintStr);
+        const athlete = selectedAthletes.find(a => a.mint === mintStr)!;
+        const poolKey = new PublicKey(athlete.poolAddress);
+        const userAta = getAssociatedTokenAddressSync(mintKey, userKey, true);
+        const vault = getAssociatedTokenAddressSync(mintKey, contestKey, true);
+
+        remainingAccounts.push(
+          { address: mintStr, isWritable: false, isSigner: false },
+          { address: userAta.toBase58(), isWritable: true, isSigner: false },
+          { address: vault.toBase58(), isWritable: true, isSigner: false },
+          { address: poolKey.toBase58(), isWritable: false, isSigner: false }
+        );
+      }
+
+      toast.info('Fetching Contest Lookup Table...');
+      const lutAddress = new PublicKey(contest!.addressLookupTable);
+      const lookupTableAccount = (await connection.getAddressLookupTable(lutAddress, { commitment: 'confirmed' })).value!;
+
+      // Step 2: Enter Contest
+      toast.info('Entering contest... Please approve the transaction.');
+      const lineupAddresses = selectedAthletes.map(a => a.mint);
+      
+      const enterIxFixed = getEnterContestInstruction({
+        config: configPda.toString() as any,
+        contest: contestKey.toBase58() as any,
+        entry: entryPda.toString() as any,
+        user: userKey.toBase58() as any,
+        athletes: lineupAddresses as any, 
+      });
+
+      const { TransactionInstruction } = await import('@solana/web3.js');
+      const instruction = new TransactionInstruction({
+        programId: new PublicKey(enterIxFixed.programAddress),
+        keys: [...enterIxFixed.accounts.map(a => ({
+          pubkey: new PublicKey(a.address),
+          isSigner: (a as any).role >= 2,
+          isWritable: (a as any).role === 1 || (a as any).role === 3,
+        })), ...remainingAccounts.map(a => ({
+          pubkey: new PublicKey(a.address),
+          isSigner: a.isSigner,
+          isWritable: a.isWritable,
+        }))],
+        data: Buffer.from(enterIxFixed.data)
+      });
+
+      const { blockhash } = await connection.getLatestBlockhash();
+      const messageV0 = new TransactionMessage({
+        payerKey: userKey,
+        recentBlockhash: blockhash,
+        instructions: [instruction],
+      }).compileToV0Message([lookupTableAccount]);
+      
+      const transaction = new VersionedTransaction(messageV0);
+      const signedTransaction = await signTransaction(transaction);
+      const signature = await connection.sendRawTransaction(signedTransaction.serialize());
+      await connection.confirmTransaction(signature, 'confirmed');
+
+      toast.success('Successfully entered contest!');
     } catch (error) {
-      toast.error('Failed to enter contest');
+      console.error(error);
+      toast.error('Transaction failed');
     } finally {
       setLoading(false);
     }
@@ -276,14 +377,14 @@ function ContestDetailContent() {
 
                       <div className="grid gap-2 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
                         {selectedAthletes.map((athlete) => (
-                          <div key={athlete.mint.toBase58()} className="flex items-center justify-between p-3 border rounded-lg">
+                          <div key={athlete.mint} className="flex items-center justify-between p-3 border rounded-lg">
                             <div className="flex items-center gap-3">
                               <Badge className={ROLE_COLORS[ROLE_LABELS[athlete.role]]}>
                                 {ROLE_LABELS[athlete.role]}
                               </Badge>
                               <span className="font-medium">{athlete.name}</span>
                             </div>
-                            <Button variant="ghost" size="sm" onClick={() => handleRemoveAthlete(athlete.mint)}>
+                            <Button variant="ghost" size="sm" onClick={() => removeAthlete(athlete.mint)}>
                               ×
                             </Button>
                           </div>
@@ -324,10 +425,10 @@ function ContestDetailContent() {
                 <CardContent>
                   <div className="space-y-2 max-h-[600px] overflow-y-auto">
                     {availableAthletes.map((athlete) => {
-                      const isSelected = selectedAthletes.some(a => a.mint.equals(athlete.mint));
+                    const isSelected = selectedAthletes.some(a => a.mint === athlete.mint);
                       return (
                         <button
-                          key={athlete.mint.toBase58()}
+                          key={athlete.mint}
                           onClick={() => !isSelected && handleSelectAthlete(athlete)}
                           disabled={isSelected}
                           className="w-full flex items-center justify-between p-3 border rounded-lg hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed text-left"

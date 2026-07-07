@@ -337,68 +337,6 @@
       ]
     },
     {
-      "name": "calculate_rankings",
-      "discriminator": [
-        103,
-        159,
-        160,
-        115,
-        229,
-        181,
-        35,
-        13
-      ],
-      "accounts": [
-        {
-          "name": "config",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  97,
-                  100,
-                  109,
-                  105,
-                  110
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "contest",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  99,
-                  111,
-                  110,
-                  116,
-                  101,
-                  115,
-                  116
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "contest.id",
-                "account": "Contest"
-              }
-            ]
-          }
-        },
-        {
-          "name": "keeper",
-          "signer": true
-        }
-      ],
-      "args": []
-    },
-    {
       "name": "claim_reward",
       "discriminator": [
         149,
@@ -470,14 +408,29 @@
           "signer": true
         },
         {
+          "name": "keeper",
+          "signer": true
+        },
+        {
           "name": "token_program",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         }
       ],
-      "args": []
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
     },
     {
       "name": "create_contest",
+      "docs": [
+        "Creates a contest and pre-initialises per-athlete vault ATAs in one transaction.",
+        "",
+        "`player_mints` — all athlete mint addresses for this contest.",
+        "`remaining_accounts` — pairs of `[vault_ata, mint_account_info]` for each mint."
+      ],
       "discriminator": [
         129,
         189,
@@ -535,6 +488,10 @@
         },
         {
           "name": "escrow_vault",
+          "docs": [
+            "The USDC escrow vault for this contest. Must be pre-created by the admin",
+            "with the contest PDA as its authority."
+          ],
           "writable": true
         },
         {
@@ -548,6 +505,13 @@
         {
           "name": "token_program",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "associated_token_program",
+          "docs": [
+            "Required to create per-athlete vault ATAs inline."
+          ],
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
         },
         {
           "name": "system_program",
@@ -572,99 +536,16 @@
           "type": {
             "vec": "u16"
           }
-        }
-      ]
-    },
-    {
-      "name": "enter_contest",
-      "discriminator": [
-        248,
-        207,
-        142,
-        242,
-        66,
-        162,
-        150,
-        16
-      ],
-      "accounts": [
-        {
-          "name": "config"
         },
         {
-          "name": "contest",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  99,
-                  111,
-                  110,
-                  116,
-                  101,
-                  115,
-                  116
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "contest.id",
-                "account": "Contest"
-              }
-            ]
-          }
-        },
-        {
-          "name": "entry",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  101,
-                  110,
-                  116,
-                  114,
-                  121
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "contest"
-              },
-              {
-                "kind": "account",
-                "path": "user"
-              }
-            ]
-          }
-        },
-        {
-          "name": "user",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "token_program",
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": [
-        {
-          "name": "athletes",
+          "name": "player_mints",
           "type": {
-            "array": [
-              "pubkey",
-              11
-            ]
+            "vec": "pubkey"
           }
+        },
+        {
+          "name": "address_lookup_table",
+          "type": "pubkey"
         }
       ]
     },
@@ -893,6 +774,99 @@
       ]
     },
     {
+      "name": "enter_contest",
+      "discriminator": [
+        124,
+        21,
+        89,
+        144,
+        102,
+        156,
+        149,
+        232
+      ],
+      "accounts": [
+        {
+          "name": "config"
+        },
+        {
+          "name": "contest",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  116,
+                  101,
+                  115,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "contest.id",
+                "account": "Contest"
+              }
+            ]
+          }
+        },
+        {
+          "name": "entry",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  110,
+                  116,
+                  114,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "contest"
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
+        },
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "athletes",
+          "type": {
+            "array": [
+              "pubkey",
+              11
+            ]
+          }
+        }
+      ]
+    },
+    {
       "name": "initialize",
       "discriminator": [
         175,
@@ -1081,7 +1055,8 @@
           }
         },
         {
-          "name": "mint"
+          "name": "mint",
+          "writable": true
         },
         {
           "name": "contest_token_vault",
@@ -1699,77 +1674,6 @@
       ]
     },
     {
-      "name": "set_scores",
-      "discriminator": [
-        251,
-        226,
-        79,
-        234,
-        175,
-        27,
-        245,
-        149
-      ],
-      "accounts": [
-        {
-          "name": "config",
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  97,
-                  100,
-                  109,
-                  105,
-                  110
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "contest",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  99,
-                  111,
-                  110,
-                  116,
-                  101,
-                  115,
-                  116
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "contest.id",
-                "account": "Contest"
-              }
-            ]
-          }
-        },
-        {
-          "name": "entry",
-          "writable": true
-        },
-        {
-          "name": "keeper",
-          "signer": true
-        }
-      ],
-      "args": [
-        {
-          "name": "score",
-          "type": "i64"
-        }
-      ]
-    },
-    {
       "name": "settle_contest",
       "discriminator": [
         79,
@@ -1834,78 +1738,6 @@
         }
       ],
       "args": []
-    },
-    {
-      "name": "setup_contest",
-      "discriminator": [
-        130,
-        243,
-        88,
-        62,
-        118,
-        222,
-        129,
-        31
-      ],
-      "accounts": [
-        {
-          "name": "config"
-        },
-        {
-          "name": "contest",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  99,
-                  111,
-                  110,
-                  116,
-                  101,
-                  115,
-                  116
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "contest.id",
-                "account": "Contest"
-              }
-            ]
-          }
-        },
-        {
-          "name": "admin",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
-        },
-        {
-          "name": "token_program",
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
-        },
-        {
-          "name": "associated_token_program",
-          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
-        },
-        {
-          "name": "rent",
-          "address": "SysvarRent111111111111111111111111111111111"
-        }
-      ],
-      "args": [
-        {
-          "name": "player_mints",
-          "type": {
-            "vec": "pubkey"
-          }
-        }
-      ]
     },
     {
       "name": "update_pool",
@@ -2168,6 +2000,9 @@
   "types": [
     {
       "name": "AdminConfig",
+      "docs": [
+        "Global program configuration; one per deployment."
+      ],
       "type": {
         "kind": "struct",
         "fields": [
@@ -2196,6 +2031,9 @@
     },
     {
       "name": "AthletePool",
+      "docs": [
+        "On-chain representation of a single tradable athlete token pool."
+      ],
       "type": {
         "kind": "struct",
         "fields": [
@@ -2248,6 +2086,9 @@
     },
     {
       "name": "Contest",
+      "docs": [
+        "A fantasy contest created by the admin."
+      ],
       "type": {
         "kind": "struct",
         "fields": [
@@ -2289,6 +2130,9 @@
           },
           {
             "name": "prize_split",
+            "docs": [
+              "Basis-point share for each prize rank; zeroed slots are unused."
+            ],
             "type": {
               "array": [
                 "u16",
@@ -2301,8 +2145,26 @@
             "type": "pubkey"
           },
           {
-            "name": "settled",
-            "type": "bool"
+            "name": "total_mint_count",
+            "docs": [
+              "Total number of athlete mints registered for this contest (set at creation)."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "processed_mint_count",
+            "docs": [
+              "Number of mints processed by `process_entry_mint` so far.",
+              "Must equal `total_mint_count` before the contest can be settled."
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "address_lookup_table",
+            "docs": [
+              "The Address Lookup Table containing all shared contest accounts (mints, pools, vaults)."
+            ],
+            "type": "pubkey"
           }
         ]
       }
@@ -2326,6 +2188,9 @@
     },
     {
       "name": "UserEntry",
+      "docs": [
+        "A single user's lineup entry for a contest."
+      ],
       "type": {
         "kind": "struct",
         "fields": [
@@ -2347,46 +2212,18 @@
             }
           },
           {
-            "name": "score",
-            "type": "i64"
-          },
-          {
-            "name": "rank",
-            "type": "u32"
-          },
-          {
             "name": "claimed",
             "type": "bool"
           },
           {
             "name": "is_complete",
+            "docs": [
+              "True once the full 11-player lineup has been validated and staked."
+            ],
             "type": "bool"
-          },
-          {
-            "name": "gk_count",
-            "type": "u8"
-          },
-          {
-            "name": "def_count",
-            "type": "u8"
-          },
-          {
-            "name": "mid_count",
-            "type": "u8"
-          },
-          {
-            "name": "fwd_count",
-            "type": "u8"
           }
         ]
       }
-    }
-  ],
-  "constants": [
-    {
-      "name": "SEED",
-      "type": "string",
-      "value": "\"anchor\""
     }
   ]
 }

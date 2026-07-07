@@ -51,6 +51,7 @@ pub mod dexi {
         winner_count: u8,
         prize_split: Vec<u16>,
         player_mints: Vec<Pubkey>,
+        address_lookup_table: Pubkey,
     ) -> Result<()> {
         ctx.accounts.init(
             id,
@@ -58,6 +59,7 @@ pub mod dexi {
             winner_count,
             prize_split,
             player_mints,
+            address_lookup_table,
             &ctx.bumps,
             ctx.remaining_accounts,
         )

@@ -65,6 +65,8 @@ pub struct Contest {
     /// Number of mints processed by `process_entry_mint` so far.
     /// Must equal `total_mint_count` before the contest can be settled.
     pub processed_mint_count: u8,
+    /// The Address Lookup Table containing all shared contest accounts (mints, pools, vaults).
+    pub address_lookup_table: Pubkey,
 }
 
 /// A single user's lineup entry for a contest.

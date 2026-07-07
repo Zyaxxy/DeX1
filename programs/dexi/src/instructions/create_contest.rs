@@ -48,6 +48,7 @@ impl<'info> CreateContest<'info> {
         winner_count: u8,
         prize_split: Vec<u16>,
         player_mints: Vec<Pubkey>,
+        address_lookup_table: Pubkey,
         bumps: &CreateContestBumps,
         remaining_accounts: &'info [AccountInfo<'info>],
     ) -> Result<()> {
@@ -117,6 +118,7 @@ impl<'info> CreateContest<'info> {
             escrow_vault: self.escrow_vault.key(),
             total_mint_count,
             processed_mint_count: 0,
+            address_lookup_table,
         });
 
         Ok(())

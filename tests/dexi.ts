@@ -72,6 +72,9 @@ describe("Dexi", () => {
   let user1EntryPda: PublicKey;
   let user2EntryPda: PublicKey;
 
+  let lutAddress: PublicKey;
+  let lookupTableAccount: AddressLookupTableProgram; // actually AddressLookupTableAccount, but keeping type any below
+
   function buildCreateContestRemainingAccounts(mints: PublicKey[], contestPda: PublicKey): any[] {
     const accounts = [];
     for (const mint of mints) {
@@ -561,13 +564,25 @@ describe("Dexi", () => {
       const playerMints = [gkMint, defMint, midMint, fwdMint];
       const remainingAccounts = buildCreateContestRemainingAccounts(playerMints, contestPda);
 
+      // Create ALT for the contest
+      const slot = await connection.getSlot();
+      const [createIx, lut] = AddressLookupTableProgram.createLookupTable({
+        authority: admin.publicKey,
+        payer: admin.publicKey,
+        recentSlot: Math.max(slot - 10, 0),
+      });
+      lutAddress = lut;
+      const txLut = new Transaction().add(createIx);
+      await provider.sendAndConfirm(txLut, [admin]);
+
       const tx = await program.methods
         .createContest(
           new BN(CONTEST_ID),
           new BN(startTime),
           3,
           [5000, 3000, 2000],
-          playerMints
+          playerMints,
+          lutAddress
         )
         .accountsStrict({
           config: configPda,
@@ -611,7 +626,7 @@ describe("Dexi", () => {
 
       try {
         await program.methods
-          .createContest(new BN(contestId2), new BN(startTime), 3, [6000, 5000, 2000], playerMints)
+          .createContest(new BN(contestId2), new BN(startTime), 3, [6000, 5000, 2000], playerMints, lutAddress)
           .accountsStrict({
             config: configPda,
             contest: contestPda2,
@@ -670,13 +685,6 @@ describe("Dexi", () => {
         await getOrCreateAssociatedTokenAccount(connection, admin, mint, contestPda, true);
       }
 
-      const slot = await connection.getSlot();
-      const [createIx, lutAddress] = AddressLookupTableProgram.createLookupTable({
-        authority: admin.publicKey,
-        payer: admin.publicKey,
-        recentSlot: Math.max(slot - 10, 0),
-      });
-
       const vaultGk = getAssociatedTokenAddressSync(gkMint, contestPda, true);
       const vaultDef = getAssociatedTokenAddressSync(defMint, contestPda, true);
       const vaultMid = getAssociatedTokenAddressSync(midMint, contestPda, true);
@@ -698,11 +706,10 @@ describe("Dexi", () => {
         addresses: staticAddresses,
       });
 
-      const tx = new Transaction().add(createIx, extendIx);
+      const tx = new Transaction().add(extendIx);
       await provider.sendAndConfirm(tx, [admin]);
 
-      await new Promise(resolve => setTimeout(resolve, 1500));
-
+      await new Promise(resolve => setTimeout(resolve, 2000));
       lookupTableAccount = (await connection.getAddressLookupTable(lutAddress, { commitment: "confirmed" })).value!;
     });
 
@@ -821,7 +828,7 @@ describe("Dexi", () => {
       const createRemainingAccounts = buildCreateContestRemainingAccounts(playerMints, contestPda3);
 
       await program.methods
-        .createContest(new BN(contestId3), new BN(pastTime), 2, [6000, 4000], playerMints)
+        .createContest(new BN(contestId3), new BN(pastTime), 2, [6000, 4000], playerMints, lutAddress)
         .accountsStrict({
           config: configPda,
           contest: contestPda3,
@@ -985,7 +992,7 @@ describe("Dexi", () => {
       const remainingAccounts = buildCreateContestRemainingAccounts(playerMints, contestPda5);
 
       await program.methods
-        .createContest(new BN(contestId5), new BN(now), 2, [6000, 4000], playerMints)
+        .createContest(new BN(contestId5), new BN(now), 2, [6000, 4000], playerMints, lutAddress)
         .accountsStrict({
           config: configPda,
           contest: contestPda5,

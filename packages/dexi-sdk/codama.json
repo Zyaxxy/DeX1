@@ -4,7 +4,7 @@
   "scripts": {
     "js": {
       "from": "@codama/renderers-js",
-      "args": ["src/lib/program/generated"]
+      "args": ["."]
     }
   }
 }

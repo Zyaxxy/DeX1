@@ -1,8 +1,9 @@
 import { PublicKey } from '@solana/web3.js';
-import idl from '@/idl/dexi.json';
+import idl from '@dexi/sdk/src/idl/dexi.json';
 
 export const PROGRAM_ID = new PublicKey(idl.address as string);
 export const USDC_DECIMALS = 6;
+export const USDC_MINT = process.env.NEXT_PUBLIC_USDC_MINT || 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'; // Default to mainnet USDC
 
 export const CLUSTER = process.env.NEXT_PUBLIC_CLUSTER || 'devnet';
 export const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 

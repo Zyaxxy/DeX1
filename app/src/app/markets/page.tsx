@@ -4,46 +4,72 @@ import dynamic from 'next/dynamic';
 import { useState, useEffect, useMemo } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
-import { PublicKey, Connection } from '@solana/web3.js';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import Link from 'next/link';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { WalletButton } from '@/components/wallet-button';
-import { connection, ROLE_LABELS, ROLE_COLORS, formatTokenAmount, RPC_URL, getPoolPda, getConfigPda, getTokenBalance, USDC_DECIMALS } from '@/lib/program/client';
-import { toast } from 'sonner';
+import { WalletButton } from '@/solana/components/wallet-button';
+import { ROLE_LABELS, ROLE_COLORS, rpc, PROGRAM_ID } from '@/solana/client';
+import { decodeAthletePool, ATHLETE_POOL_DISCRIMINATOR, AthleteRole } from '@dexi/sdk';
+import { getBase58Decoder } from '@solana/kit';
 
 interface PoolInfo {
-  mint: PublicKey;
+  mint: string;
   name: string;
   role: number;
   enabled: boolean;
-  balance?: bigint;
+  price?: number;
+  poolUsdc?: bigint;
+  poolTokens?: bigint;
 }
 
-function getMockPools(): PoolInfo[] {
-  return [
-    { mint: new PublicKey('A4B2xZJ8cFZ7Y2vL4NpT9rMk6H8vK3fE6wXy2sAB'), name: 'Erling Haaland', role: 3, enabled: true },
-    { mint: new PublicKey('B5C3yA9dHG8wAL6zM3OpT0sNlO7iH9wL4gF7yB3tCD'), name: 'Kevin De Bruyne', role: 2, enabled: true },
-    { mint: new PublicKey('C6D4zB0eIH9xBM7aN4PqU1tOpP8jK0iI5hH8gC4uDE'), name: 'Mohamed Salah', role: 3, enabled: true },
-    { mint: new PublicKey('D7E5aC1fJI0yCN8bO5QrV2uPqQ9kL1jJ6iI9hD5vEF'), name: 'Virgil van Dijk', role: 1, enabled: true },
-    { mint: new PublicKey('E8F6bD2gJK1zDO9cP6RvW3rRqR0kL2kK7jJ0iE6wFG'), name: 'Alisson Becker', role: 0, enabled: true },
-    { mint: new PublicKey('F9G7cE3hKL2zEO0dQ7SwX4sSrS1lL3mL8kK1jF7xGH'), name: 'Bruno Fernandes', role: 2, enabled: true },
-    { mint: new PublicKey('G0H8dF4iML3zAP1eR8TxY5tSsT2mM4nL9lL2kG8yHI'), name: 'Harry Kane', role: 3, enabled: true },
-    { mint: new PublicKey('H1I9eG5jMN4zBQ2fS9UyZ6uUtU3nN5oM0mM3lH9zIJ'), name: 'Son Heung-min', role: 3, enabled: true },
-  ];
-}
-
-export default dynamic(() => Promise.resolve(MarketsPage), { ssr: false });
-
-function MarketsPage() {
-  const { connected, publicKey } = useWallet();
+export default function Markets() {
+  const { connected } = useWallet();
   const { setVisible } = useWalletModal();
-  const [pools, setPools] = useState<PoolInfo[]>(getMockPools());
+  const [pools, setPools] = useState<PoolInfo[]>([]);
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchPools() {
+      try {
+        const response = await rpc.getProgramAccounts(PROGRAM_ID.toBase58() as any, {
+          filters: [
+            { memcmp: { offset: BigInt(0), encoding: 'base58', bytes: getBase58Decoder().decode(ATHLETE_POOL_DISCRIMINATOR) as any } }
+          ]
+        }).send();
+        
+        const formattedPools = response.map((account) => {
+          const decoded = decodeAthletePool({
+            address: account.pubkey,
+            data: new Uint8Array(Buffer.from(account.account.data[0], account.account.data[1] as any)),
+            exists: true,
+          } as any).data;
+
+          return {
+            mint: decoded.mint.toString(),
+            name: decoded.name,
+            role: decoded.role,
+            enabled: decoded.enabled,
+            price: 1.0,
+            poolUsdc: BigInt(0),
+            poolTokens: BigInt(0),
+          };
+        });
+        
+        setPools(formattedPools);
+      } catch (err) {
+        console.error("Failed to fetch pools:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchPools();
+  }, []);
 
   const handleRoleFilterChange = (value: string | null) => {
     if (value) setRoleFilter(value);
@@ -165,7 +191,7 @@ function MarketsPage() {
 
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {filteredPools.map((pool) => (
-                <a key={pool.mint.toBase58()} href={`/markets/${pool.mint.toBase58()}`}>
+                <a key={pool.mint} href={`/markets/${pool.mint}`}>
                   <Card className="hover:shadow-md transition-shadow cursor-pointer h-full">
                     <CardHeader className="pb-3">
                       <div className="flex items-center justify-between">
@@ -178,7 +204,7 @@ function MarketsPage() {
                     </CardHeader>
                     <CardContent className="space-y-3">
                       <div className="text-sm text-muted-foreground">
-                        <p>Mint: {pool.mint.toBase58().slice(0, 8)}...</p>
+                        <p>Mint: {pool.mint.slice(0, 8)}...</p>
                       </div>
                       <Button className="w-full" variant={pool.enabled ? 'default' : 'outline'} disabled={!pool.enabled}>
                         Trade

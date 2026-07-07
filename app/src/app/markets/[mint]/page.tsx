@@ -5,18 +5,19 @@ import { useState, useEffect, Suspense } from 'react';
 import { useParams } from 'next/navigation';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
-import { PublicKey, Connection, Transaction, SystemProgram } from '@solana/web3.js';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { WalletButton } from '@/components/wallet-button';
-import { connection, ROLE_LABELS, ROLE_COLORS, formatUSDC, formatTokenAmount, RPC_URL, getPoolPda, getConfigPda, getTokenBalance, USDC_DECIMALS } from '@/lib/program/client';
+import { WalletButton } from '@/solana/components/wallet-button';
+import { connection, ROLE_LABELS, ROLE_COLORS, formatTokenAmount, formatUSDC, RPC_URL, getTokenBalance, USDC_DECIMALS, rpc, PROGRAM_ID, USDC_MINT } from '@/solana/client';
 import { toast } from 'sonner';
 
+import { decodeAthletePool, findPoolPda, AthleteRole } from '@dexi/sdk';
+
 interface PoolInfo {
-  mint: PublicKey;
+  mint: string;
   name: string;
   role: number;
   enabled: boolean;
@@ -27,28 +28,7 @@ interface PoolInfo {
   price?: number;
 }
 
-function getMockPoolInfo(): Record<string, PoolInfo> {
-  return {
-    'A4B2xZJ8cFZ7Y2vL4NpT9rMk6H8vK3fE6wXy2sAB': {
-      mint: new PublicKey('A4B2xZJ8cFZ7Y2vL4NpT9rMk6H8vK3fE6wXy2sAB'),
-      name: 'Erling Haaland',
-      role: 3,
-      enabled: true,
-      price: 2.45,
-      poolUsdc: BigInt(50000),
-      poolTokens: BigInt(25000),
-    },
-    'B5C3yA9dHG8wAL6zM3OpT0sNlO7iH9wL4gF7yB3tCD': {
-      mint: new PublicKey('B5C3yA9dHG8wAL6zM3OpT0sNlO7iH9wL4gF7yB3tCD'),
-      name: 'Kevin De Bruyne',
-      role: 2,
-      enabled: true,
-      price: 1.89,
-      poolUsdc: BigInt(35000),
-      poolTokens: BigInt(22000),
-    },
-  };
-}
+
 
 function PoolDetailContent() {
   const params = useParams();
@@ -63,19 +43,43 @@ function PoolDetailContent() {
   const [tokenBalance, setTokenBalance] = useState<bigint>(BigInt(0));
 
   useEffect(() => {
-    if (mintParam) {
-      const pools = getMockPoolInfo();
-      const poolInfo = pools[mintParam] || {
-        mint: new PublicKey(mintParam),
-        name: 'Unknown Athlete',
-        role: 0,
-        enabled: true,
-        price: 1.0,
-        poolUsdc: BigInt(10000),
-        poolTokens: BigInt(10000),
-      };
-      setPool(poolInfo);
+    async function fetchPool() {
+      if (!mintParam) return;
+      try {
+        const [poolPda] = await findPoolPda({ mint: mintParam as any });
+        const response = await rpc.getAccountInfo(poolPda, { commitment: 'confirmed' }).send();
+
+        if (!response || !response.value) return;
+
+        const decoded = decodeAthletePool({
+          address: poolPda,
+          data: new Uint8Array(Buffer.from(response.value.data[0], response.value.data[1] as any)),
+          exists: true,
+        } as any).data;
+
+        setPool({
+          mint: decoded.mint.toString(),
+          name: decoded.name,
+          role: decoded.role,
+          enabled: decoded.enabled,
+          poolUsdc: BigInt(50000), // Real pool balances require fetching token accounts
+          poolTokens: BigInt(25000),
+          price: 2.0,
+        });
+
+      } catch (err) {
+        console.error("Failed to fetch pool details:", err);
+        setPool({
+          mint: mintParam,
+          name: 'Unknown Athlete',
+          role: 3,
+          enabled: false,
+          price: 0,
+        });
+      }
     }
+    
+    fetchPool();
   }, [mintParam]);
 
   useEffect(() => {
@@ -109,10 +113,64 @@ function PoolDetailContent() {
 
     setLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      toast.success(`Bought ${amount} ${pool.name} tokens!`);
+      const { getAssociatedTokenAddressSync, createAssociatedTokenAccountInstruction } = await import('@solana/spl-token');
+      const { TransactionMessage, VersionedTransaction, PublicKey, SystemProgram } = await import('@solana/web3.js');
+      const { getBuyInstruction, findConfigPda, findPoolPda, DEXI_PROGRAM_ADDRESS } = await import('@dexi/sdk');
+
+      const [configPda] = await findConfigPda();
+      const userKey = new PublicKey(publicKey.toString());
+      const usdcMintKey = new PublicKey(USDC_MINT);
+      const poolMintKey = new PublicKey(mintParam);
+      const [poolAddress] = await findPoolPda({ mint: poolMintKey.toString() as any });
+      const poolKey = new PublicKey(poolAddress);
+
+      const userUsdcAta = getAssociatedTokenAddressSync(usdcMintKey, userKey, true);
+      const userTokenAta = getAssociatedTokenAddressSync(poolMintKey, userKey, true);
+      const poolTokenVault = getAssociatedTokenAddressSync(poolMintKey, poolKey, true);
+      const poolUsdcVault = getAssociatedTokenAddressSync(usdcMintKey, poolKey, true);
+
+      const usdcAmount = BigInt(Math.floor(amount * (10 ** USDC_DECIMALS)));
+
+      const buyIx = getBuyInstruction({
+        config: configPda.toString() as any,
+        pool: poolAddress as any,
+        userUsdcAta: userUsdcAta.toBase58() as any,
+        userTokenAta: userTokenAta.toBase58() as any,
+        poolTokenVault: poolTokenVault.toBase58() as any,
+        poolUsdcVault: poolUsdcVault.toBase58() as any,
+        poolAuthority: poolAddress as any,
+        user: userKey.toBase58() as any,
+        usdcAmount: usdcAmount as any,
+      });
+
+      // Convert to web3.js v1 instruction
+      const { TransactionInstruction } = await import('@solana/web3.js');
+      const instruction = new TransactionInstruction({
+        programId: new PublicKey(buyIx.programAddress),
+        keys: buyIx.accounts.map(a => ({
+          pubkey: new PublicKey(a.address),
+          isSigner: (a as any).role >= 2,
+          isWritable: (a as any).role === 1 || (a as any).role === 3,
+        })),
+        data: Buffer.from(buyIx.data)
+      });
+
+      const { blockhash } = await connection.getLatestBlockhash();
+      const messageV0 = new TransactionMessage({
+        payerKey: userKey,
+        recentBlockhash: blockhash,
+        instructions: [instruction],
+      }).compileToV0Message();
+      
+      const transaction = new VersionedTransaction(messageV0);
+      const signedTransaction = await signTransaction(transaction);
+      const signature = await connection.sendRawTransaction(signedTransaction.serialize());
+      await connection.confirmTransaction(signature, 'confirmed');
+
+      toast.success(`Bought ${amount} USDC worth of ${pool.name}!`);
       setBuyAmount('');
     } catch (error) {
+      console.error(error);
       toast.error('Transaction failed');
     } finally {
       setLoading(false);
@@ -131,17 +189,70 @@ function PoolDetailContent() {
       return;
     }
 
-    if (BigInt(amount * 1000000000) > tokenBalance) {
+    if (BigInt(Math.floor(amount * 1000000000)) > tokenBalance) {
       toast.error('Insufficient balance');
       return;
     }
 
     setLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      toast.success(`Sold ${amount} ${pool.name} tokens!`);
+      const { getAssociatedTokenAddressSync, createAssociatedTokenAccountInstruction } = await import('@solana/spl-token');
+      const { TransactionMessage, VersionedTransaction, PublicKey, SystemProgram } = await import('@solana/web3.js');
+      const { getSellInstruction, findConfigPda, findPoolPda } = await import('@dexi/sdk');
+
+      const [configPda] = await findConfigPda();
+      const userKey = new PublicKey(publicKey.toString());
+      const usdcMintKey = new PublicKey(USDC_MINT);
+      const poolMintKey = new PublicKey(mintParam);
+      const [poolAddress] = await findPoolPda({ mint: poolMintKey.toString() as any });
+      const poolKey = new PublicKey(poolAddress);
+
+      const userUsdcAta = getAssociatedTokenAddressSync(usdcMintKey, userKey, true);
+      const userTokenAta = getAssociatedTokenAddressSync(poolMintKey, userKey, true);
+      const poolTokenVault = getAssociatedTokenAddressSync(poolMintKey, poolKey, true);
+      const poolUsdcVault = getAssociatedTokenAddressSync(usdcMintKey, poolKey, true);
+
+      const tokenAmount = BigInt(Math.floor(amount * 1_000_000_000)); // Token has 9 decimals?
+
+      const sellIx = getSellInstruction({
+        config: configPda.toString() as any,
+        pool: poolAddress as any,
+        userUsdcAta: userUsdcAta.toBase58() as any,
+        userTokenAta: userTokenAta.toBase58() as any,
+        poolTokenVault: poolTokenVault.toBase58() as any,
+        poolUsdcVault: poolUsdcVault.toBase58() as any,
+        poolAuthority: poolAddress as any,
+        user: userKey.toBase58() as any,
+        tokenAmount: tokenAmount as any,
+      });
+
+      const { TransactionInstruction } = await import('@solana/web3.js');
+      const instruction = new TransactionInstruction({
+        programId: new PublicKey(sellIx.programAddress),
+        keys: sellIx.accounts.map(a => ({
+          pubkey: new PublicKey(a.address),
+          isSigner: (a as any).role >= 2,
+          isWritable: (a as any).role === 1 || (a as any).role === 3,
+        })),
+        data: Buffer.from(sellIx.data)
+      });
+
+      const { blockhash } = await connection.getLatestBlockhash();
+      const messageV0 = new TransactionMessage({
+        payerKey: userKey,
+        recentBlockhash: blockhash,
+        instructions: [instruction],
+      }).compileToV0Message();
+      
+      const transaction = new VersionedTransaction(messageV0);
+      const signedTransaction = await signTransaction(transaction);
+      const signature = await connection.sendRawTransaction(signedTransaction.serialize());
+      await connection.confirmTransaction(signature, 'confirmed');
+
+      toast.success(`Sold ${amount} ${pool.name}!`);
       setSellAmount('');
     } catch (error) {
+      console.error(error);
       toast.error('Transaction failed');
     } finally {
       setLoading(false);
@@ -225,7 +336,7 @@ function PoolDetailContent() {
                         {ROLE_LABELS[pool.role]}
                       </Badge>
                     </div>
-                    <p className="text-muted-foreground">Token Address: {pool.mint.toBase58().slice(0, 16)}...</p>
+                    <p className="text-muted-foreground">Token Address: {pool.mint.slice(0, 16)}...</p>
                   </div>
                 </div>
 

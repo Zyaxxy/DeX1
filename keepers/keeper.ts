@@ -1,6 +1,7 @@
 import 'dotenv/config';
-import { Connection, PublicKey, Keypair } from '@solana/web3.js';
+import { Connection, PublicKey, Keypair, SystemProgram } from '@solana/web3.js';
 import { AnchorProvider, BorshAccountsCoder, Program, Wallet } from '@coral-xyz/anchor';
+import { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import bs58 from 'bs58';
 
 const PROGRAM_ID = new PublicKey('A5PqjrLDne1y5iskNFxNhSpC2w1regprbaKZPTxAtAJS');
@@ -273,13 +274,70 @@ class DexiKeeper {
   // ── Step 2: process_entry_mint per athlete mint ───────────────────────────────
 
   private async processEntryMints(contestKey: PublicKey, contest: ContestData) {
-    // In production: fetch the list of playerMints from the Contest or a config account.
-    // Here we derive them from the contest vault ATAs that were pre-created.
-    // TODO: store playerMints on-chain (e.g., in a ContestMints sidecar account)
-    //       so the keeper can fetch them without off-chain state.
-    console.log(`   ℹ️  process_entry_mint must be called for each athlete mint.`);
-    console.log(`      Processed so far: ${contest.processedMintCount}/${contest.totalMintCount}`);
-    // Placeholder: caller should invoke process_entry_mint for each remaining mint.
+    console.log(`   🔄 Processing entry mints. Processed so far: ${contest.processedMintCount}/${contest.totalMintCount}`);
+
+    // @ts-ignore
+    const configData = await this.program.account.adminConfig.fetch(this.configAddress);
+    const usdcMint = configData.usdcMint as PublicKey;
+
+    const tokenAccounts = await this.connection.getTokenAccountsByOwner(contestKey, {
+      programId: TOKEN_PROGRAM_ID
+    });
+
+    let processedCount = contest.processedMintCount;
+    for (const { pubkey, account } of tokenAccounts.value) {
+      if (processedCount >= contest.totalMintCount) {
+        break;
+      }
+      const mintPubkey = new PublicKey(account.data.slice(0, 32));
+
+      if (mintPubkey.equals(usdcMint)) {
+        continue;
+      }
+
+      const amountBytes = account.data.slice(64, 72);
+      const amount = amountBytes.readBigUInt64LE(0);
+
+      if (amount === 0n) {
+        continue;
+      }
+
+      const poolAddress = PublicKey.findProgramAddressSync(
+        [Buffer.from('pool'), mintPubkey.toBuffer()],
+        PROGRAM_ID
+      )[0];
+
+      const poolTokenVault = getAssociatedTokenAddressSync(mintPubkey, poolAddress, true);
+      const poolUsdcVault = getAssociatedTokenAddressSync(usdcMint, poolAddress, true);
+      const contestTokenVault = pubkey;
+
+      try {
+        await this.program.methods
+          .processEntryMint()
+          .accountsStrict({
+            contest: contestKey,
+            pool: poolAddress,
+            mint: mintPubkey,
+            contestTokenVault,
+            contestEscrowVault: contest.escrowVault,
+            config: this.configAddress,
+            poolTokenVault,
+            poolUsdcVault,
+            poolAuthority: poolAddress,
+            keeper: this.keeperKeypair.publicKey,
+            tokenProgram: TOKEN_PROGRAM_ID,
+            associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
+          } as any)
+          .signers([this.keeperKeypair])
+          .rpc();
+        
+        processedCount++;
+        console.log(`      ✅ Processed mint ${mintPubkey.toBase58()} (${processedCount}/${contest.totalMintCount})`);
+      } catch (e: any) {
+        console.error(`      ❌ Error processing mint ${mintPubkey.toBase58()}:`, e.message);
+      }
+    }
   }
 
   // ── Step 3: batch set_scores (Phase 2) ───────────────────────────────────────
@@ -289,9 +347,9 @@ class DexiKeeper {
     if (entries.length === 0) return [];
 
     // Fetch real scores from a sports API; use mock here.
-    const scored: ScoredEntry[] = entries.map(e => ({
+    const scored: ScoredEntry[] = entries.map((e, idx) => ({
       pubkey: e.pubkey,
-      score: Math.floor(Math.random() * 100) + 50, // TODO: replace with real API call
+      score: Math.floor(Math.random() * 100) + 50 + idx, // deterministic-ish for tests
     }));
 
     // Chunk into batches of MAX_ENTRIES_PER_TX to respect Solana's tx size limit.

@@ -4,23 +4,27 @@ import dynamic from 'next/dynamic';
 import { useState, useEffect } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
-import { PublicKey, Connection } from '@solana/web3.js';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { PublicKey } from '@solana/web3.js';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { WalletButton } from '@/components/wallet-button';
-import { connection, ROLE_LABELS, ROLE_COLORS, RPC_URL, getConfigPda } from '@/lib/program/client';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { WalletButton } from '@/solana/components/wallet-button';
+import { ROLE_LABELS, ROLE_COLORS, rpc, PROGRAM_ID, connection } from '@/solana/client';
 import { toast } from 'sonner';
 
-const ADMIN_WALLET_ADDRESS = '4bEzGK4DWA2s5RXqK3z3D3Y7JZJqC7yK9P8x3W2Q5tR';
+import { decodeAthletePool, ATHLETE_POOL_DISCRIMINATOR, decodeContest, CONTEST_DISCRIMINATOR, ContestStatus, AthleteRole } from '@dexi/sdk';
+import { getBase58Decoder } from '@solana/kit';
+
+const ADMIN_WALLET_ADDRESS = '9VyhrVM1SessmR92Cz2CwrM2wFP4egbjCAP69yv2Tb9N';
 
 interface PoolData {
-  mint: PublicKey;
+  mint: string;
   name: string;
   role: number;
   enabled: boolean;
@@ -35,28 +39,70 @@ interface ContestData {
   winnerCount: number;
 }
 
-function getMockPools(): PoolData[] {
-  return [
-    { mint: new PublicKey('A4B2xZJ8cFZ7Y2vL4NpT9rMk6H8vK3fE6wXy2sAB'), name: 'Erling Haaland', role: 3, enabled: true },
-    { mint: new PublicKey('B5C3yA9dHG8wAL6zM3OpT0sNlO7iH9wL4gF7yB3tCD'), name: 'Kevin De Bruyne', role: 2, enabled: true },
-    { mint: new PublicKey('C6D4zB0eIH9xBM7aN4PqU1tOpP8jK0iI5hH8gC4uDE'), name: 'Mohamed Salah', role: 3, enabled: true },
-  ];
-}
-
-function getMockContests(): ContestData[] {
-  return [
-    { id: 1, startTime: Date.now() / 1000 + 86400, status: 'Open', entryCount: 42, prizePool: 5000, winnerCount: 3 },
-    { id: 2, startTime: Date.now() / 1000 - 3600, status: 'Locked', entryCount: 128, prizePool: 12500, winnerCount: 5 },
-  ];
-}
-
 function AdminPage() {
-  const { connected, publicKey } = useWallet();
+  const { connected, publicKey, signTransaction } = useWallet();
   const { setVisible } = useWalletModal();
-  const [pools, setPools] = useState<PoolData[]>(getMockPools());
-  const [contests, setContests] = useState<ContestData[]>(getMockContests());
+  const [pools, setPools] = useState<PoolData[]>([]);
+  const [contests, setContests] = useState<ContestData[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        const [poolAccounts, contestAccounts] = await Promise.all([
+          rpc.getProgramAccounts(PROGRAM_ID.toBase58() as any, {
+            filters: [{ memcmp: { offset: BigInt(0), encoding: 'base58', bytes: getBase58Decoder().decode(ATHLETE_POOL_DISCRIMINATOR) as any } }]
+          }).send(),
+          rpc.getProgramAccounts(PROGRAM_ID.toBase58() as any, {
+            filters: [{ memcmp: { offset: BigInt(0), encoding: 'base58', bytes: getBase58Decoder().decode(CONTEST_DISCRIMINATOR) as any } }]
+          }).send()
+        ]);
+        
+        setPools(poolAccounts.map(account => {
+          const decoded = decodeAthletePool({
+            address: account.pubkey,
+            data: new Uint8Array(Buffer.from(account.account.data[0], account.account.data[1] as any)),
+            exists: true,
+          } as any).data;
+
+          return {
+            mint: decoded.mint.toString(),
+            name: decoded.name,
+            role: decoded.role,
+            enabled: decoded.enabled
+          };
+        }));
+
+        setContests(contestAccounts.map(account => {
+          const decoded = decodeContest({
+            address: account.pubkey,
+            data: new Uint8Array(Buffer.from(account.account.data[0], account.account.data[1] as any)),
+            exists: true,
+          } as any).data;
+
+          let statusStr = 'Open';
+          if (decoded.status === ContestStatus.Locked) statusStr = 'Locked';
+          else if (decoded.status === ContestStatus.Settled) statusStr = 'Settled';
+
+          return {
+            id: Number(decoded.id),
+            startTime: Number(decoded.startTime),
+            status: statusStr,
+            entryCount: Number(decoded.entryCount),
+            prizePool: Number(decoded.prizePool),
+            winnerCount: decoded.winnerCount
+          };
+        }).sort((a, b) => b.id - a.id));
+
+      } catch (err) {
+        console.error("Failed to fetch admin data:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchData();
+  }, []);
   
   const [newPoolMint, setNewPoolMint] = useState('');
   const [newPoolName, setNewPoolName] = useState('');
@@ -78,8 +124,7 @@ function AdminPage() {
 
   useEffect(() => {
     if (connected && publicKey) {
-      const adminKey = new PublicKey(ADMIN_WALLET_ADDRESS);
-      setIsAdmin(publicKey.equals(adminKey));
+      setIsAdmin(publicKey.toBase58() === ADMIN_WALLET_ADDRESS);
     }
   }, [connected, publicKey]);
 
@@ -93,7 +138,7 @@ function AdminPage() {
     try {
       await new Promise(resolve => setTimeout(resolve, 1500));
       const newPool: PoolData = {
-        mint: new PublicKey(newPoolMint),
+        mint: newPoolMint,
         name: newPoolName,
         role: parseInt(newPoolRole),
         enabled: true,
@@ -116,35 +161,196 @@ function AdminPage() {
       return;
     }
 
+    if (!signTransaction || !publicKey) {
+      toast.error('Wallet not connected');
+      return;
+    }
+
     setLoading(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      const { AddressLookupTableProgram, TransactionMessage, VersionedTransaction, SystemProgram, Transaction, TransactionInstruction } = await import('@solana/web3.js');
+      const { getAssociatedTokenAddressSync, createAssociatedTokenAccountInstruction } = await import('@solana/spl-token');
+      const { getCreateContestInstruction, findConfigPda, findContestPda, decodeAdminConfig } = await import('@dexi/sdk');
+
+      const adminKey = new PublicKey(publicKey.toString());
+      const newId = contests.length > 0 ? Math.max(...contests.map(c => c.id)) + 1 : 1;
+      const startTimeNum = Math.floor(new Date(newContestStartTime).getTime() / 1000);
+      const winnerCountNum = parseInt(newContestWinnerCount);
+      const prizeSplitArr = newContestPrizeSplit.split(',').map(s => parseInt(s.trim()) * 100);
+
+      const [configPda] = await findConfigPda();
+      const configInfo = await connection.getAccountInfo(new PublicKey(configPda));
+      const configData = decodeAdminConfig({
+        address: configPda,
+        data: new Uint8Array(Buffer.from(configInfo!.data)),
+        exists: true
+      } as any).data;
+      
+      const usdcMint = new PublicKey(configData.usdcMint);
+      const [contestPda] = await findContestPda({ id: newId });
+      const contestKey = new PublicKey(contestPda);
+      const escrowVault = getAssociatedTokenAddressSync(usdcMint, contestKey, true);
+
+      // We need to create the escrow vault ATA if it doesn't exist
+      const escrowInfo = await connection.getAccountInfo(escrowVault);
+      if (!escrowInfo) {
+        toast.info('Creating USDC escrow vault...');
+        const createAtaIx = createAssociatedTokenAccountInstruction(
+          adminKey,
+          escrowVault,
+          contestKey,
+          usdcMint
+        );
+        const { blockhash } = await connection.getLatestBlockhash();
+        const msg = new TransactionMessage({
+          payerKey: adminKey,
+          recentBlockhash: blockhash,
+          instructions: [createAtaIx],
+        }).compileToV0Message();
+        const tx = new VersionedTransaction(msg);
+        const signed = await signTransaction(tx);
+        const sig = await connection.sendRawTransaction(signed.serialize());
+        await connection.confirmTransaction(sig, 'confirmed');
+      }
+
+      // 1. Create ALT
+      toast.info('Creating Contest Lookup Table (Transaction 1/3)...');
+      const slot = await connection.getSlot();
+      const [createIx, lutAddress] = AddressLookupTableProgram.createLookupTable({
+        authority: adminKey,
+        payer: adminKey,
+        recentSlot: Math.max(slot - 10, 0),
+      });
+
+      const { blockhash: lutBlockhash } = await connection.getLatestBlockhash();
+      const lutMsg = new TransactionMessage({
+        payerKey: adminKey,
+        recentBlockhash: lutBlockhash,
+        instructions: [createIx],
+      }).compileToV0Message();
+      
+      const lutTx = new VersionedTransaction(lutMsg);
+      const signedLutTx = await signTransaction(lutTx);
+      const lutSig = await connection.sendRawTransaction(signedLutTx.serialize());
+      await connection.confirmTransaction(lutSig, 'confirmed');
+
+      // 2. Extend ALT with all enabled pools
+      toast.info('Populating Lookup Table (Transaction 2/3)...');
+      const enabledPools = pools.filter(p => p.enabled);
+      const staticAddresses: PublicKey[] = [
+        new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'), // Token Program
+        SystemProgram.programId,
+        new PublicKey(configPda),
+        contestKey,
+        adminKey,
+        escrowVault,
+      ];
+
+      const playerMints = [];
+      const remainingAccounts = [];
+
+      for (const p of enabledPools) {
+        const mintKey = new PublicKey(p.mint);
+        playerMints.push(mintKey.toBase58());
+        const poolKey = new PublicKey(
+          PublicKey.findProgramAddressSync([Buffer.from('pool'), mintKey.toBuffer()], PROGRAM_ID)[0]
+        );
+        const vault = getAssociatedTokenAddressSync(mintKey, contestKey, true);
+        staticAddresses.push(mintKey, vault, poolKey);
+
+        remainingAccounts.push(
+          { pubkey: vault, isWritable: true, isSigner: false },
+          { pubkey: mintKey, isWritable: false, isSigner: false }
+        );
+      }
+
+      // Note: If addresses > 30, we'd need to chunk this. Assuming small test set here.
+      const extendIx = AddressLookupTableProgram.extendLookupTable({
+        payer: adminKey,
+        authority: adminKey,
+        lookupTable: lutAddress,
+        addresses: staticAddresses,
+      });
+
+      const { blockhash: extBlockhash } = await connection.getLatestBlockhash();
+      const extMsg = new TransactionMessage({
+        payerKey: adminKey,
+        recentBlockhash: extBlockhash,
+        instructions: [extendIx],
+      }).compileToV0Message();
+      
+      const extTx = new VersionedTransaction(extMsg);
+      const signedExtTx = await signTransaction(extTx);
+      const extSig = await connection.sendRawTransaction(signedExtTx.serialize());
+      await connection.confirmTransaction(extSig, 'confirmed');
+
+      toast.info('Waiting for Lookup Table to activate...');
+      await new Promise(resolve => setTimeout(resolve, 3000));
+
+      // 3. Create Contest
+      toast.info('Deploying Contest (Transaction 3/3)...');
+      
+      const createIxFixed = getCreateContestInstruction({
+        id: newId,
+        startTime: startTimeNum as any,
+        winnerCount: winnerCountNum,
+        prizeSplit: prizeSplitArr,
+        playerMints: playerMints as any[],
+        addressLookupTable: lutAddress.toBase58() as any,
+        config: configPda.toString() as any,
+        contest: contestKey.toBase58() as any,
+        usdcMint: usdcMint.toBase58() as any,
+        escrowVault: escrowVault.toBase58() as any,
+        admin: adminKey.toBase58() as any,
+      });
+
+      const instruction = new TransactionInstruction({
+        programId: new PublicKey(createIxFixed.programAddress),
+        keys: [...createIxFixed.accounts.map(a => ({
+          pubkey: new PublicKey(a.address),
+          isSigner: a.role >= 2,
+          isWritable: a.role === 1 || a.role === 3,
+        })), ...remainingAccounts],
+        data: Buffer.from(createIxFixed.data)
+      });
+
+      const { blockhash: contestBlockhash } = await connection.getLatestBlockhash();
+      const contestMsg = new TransactionMessage({
+        payerKey: adminKey,
+        recentBlockhash: contestBlockhash,
+        instructions: [instruction],
+      }).compileToV0Message();
+      
+      const contestTx = new VersionedTransaction(contestMsg);
+      const signedContestTx = await signTransaction(contestTx);
+      const contestSig = await connection.sendRawTransaction(signedContestTx.serialize());
+      await connection.confirmTransaction(contestSig, 'confirmed');
+
       const newContest: ContestData = {
-        id: contests.length + 1,
-        startTime: Math.floor(new Date(newContestStartTime).getTime() / 1000),
+        id: newId,
+        startTime: startTimeNum,
         status: 'Open',
         entryCount: 0,
         prizePool: 0,
-        winnerCount: parseInt(newContestWinnerCount),
+        winnerCount: winnerCountNum,
       };
-      setContests([...contests, newContest]);
-      toast.success(`Contest #${newContest.id} created!`);
+      setContests([newContest, ...contests]);
+      toast.success(`Contest #${newId} created!`);
       setNewContestStartTime('');
-      setNewContestWinnerCount('3');
-      setNewContestPrizeSplit('50,30,20');
     } catch (error) {
+      console.error(error);
       toast.error('Failed to create contest');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleTogglePool = async (mint: PublicKey) => {
+  const handleTogglePool = async (mint: string) => {
     setLoading(true);
     try {
       await new Promise(resolve => setTimeout(resolve, 500));
       setPools(pools.map(p => 
-        p.mint.equals(mint) ? { ...p, enabled: !p.enabled } : p
+        p.mint === mint ? { ...p, enabled: !p.enabled } : p
       ));
       toast.success('Pool updated');
     } finally {
@@ -274,8 +480,8 @@ function AdminPage() {
             <TabsContent value="pools" className="space-y-4">
               <div className="flex justify-end">
                 <Dialog open={poolDialogOpen} onOpenChange={setPoolDialogOpen}>
-                  <DialogTrigger>
-                    <Button onClick={() => setPoolDialogOpen(true)}>Create Pool</Button>
+                  <DialogTrigger render={<Button onClick={() => setPoolDialogOpen(true)} />}>
+                    Create Pool
                   </DialogTrigger>
                   <DialogContent>
                     <DialogHeader>
@@ -325,7 +531,7 @@ function AdminPage() {
 
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {pools.map((pool) => (
-                  <Card key={pool.mint.toBase58()}>
+                  <Card key={pool.mint}>
                     <CardHeader className="pb-3">
                       <div className="flex items-center justify-between">
                         <Badge className={ROLE_COLORS[ROLE_LABELS[pool.role]]}>
@@ -342,9 +548,9 @@ function AdminPage() {
                       <CardTitle className="text-lg">{pool.name}</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <p className="text-sm text-muted-foreground">
-                        {pool.mint.toBase58().slice(0, 12)}...
-                      </p>
+                      <span className="font-mono text-sm">
+                        {pool.mint.slice(0, 12)}...
+                      </span>
                     </CardContent>
                   </Card>
                 ))}
@@ -354,8 +560,8 @@ function AdminPage() {
             <TabsContent value="contests" className="space-y-4">
               <div className="flex justify-end">
                 <Dialog open={contestDialogOpen} onOpenChange={setContestDialogOpen}>
-                  <DialogTrigger>
-                    <Button onClick={() => setContestDialogOpen(true)}>Create Contest</Button>
+                  <DialogTrigger render={<Button onClick={() => setContestDialogOpen(true)} />}>
+                    Create Contest
                   </DialogTrigger>
                   <DialogContent>
                     <DialogHeader>

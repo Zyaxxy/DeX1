@@ -48,18 +48,12 @@ importers:
       '@base-ui/react':
         specifier: ^1.5.0
         version: 1.5.0(@types/react@19.2.17)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
-      '@codama/nodes':
-        specifier: ^1.7.0
-        version: 1.7.0
-      '@codama/nodes-from-anchor':
-        specifier: ^1.5.0
-        version: 1.5.0(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)
-      '@codama/renderers-js':
-        specifier: ^2.2.0
-        version: 2.2.0(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)
       '@coral-xyz/anchor':
         specifier: ^0.32.1
         version: 0.32.1(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
+      '@dexi/sdk':
+        specifier: workspace:*
+        version: link:../packages/dexi-sdk
       '@solana/kit':
         specifier: ^6.9.0
         version: 6.9.0(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)(utf-8-validate@6.0.6)
@@ -87,9 +81,6 @@ importers:
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
-      codama:
-        specifier: ^1.7.0
-        version: 1.7.0
       lucide-react:
         specifier: ^1.18.0
         version: 1.18.0(react@19.2.4)
@@ -148,6 +139,9 @@ importers:
       '@coral-xyz/anchor':
         specifier: ^0.30.1
         version: 0.30.1(bufferutil@4.1.0)(typescript@5.9.3)
+      '@dexi/sdk':
+        specifier: workspace:*
+        version: link:../packages/dexi-sdk
       '@solana/kit':
         specifier: ^2.1.1
         version: 2.3.0(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)(ws@8.21.0(bufferutil@4.1.0))
@@ -170,6 +164,37 @@ importers:
       ts-node-dev:
         specifier: ^2.0.0
         version: 2.0.0(@types/node@22.19.21)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+
+  packages/dexi-sdk:
+    dependencies:
+      '@codama/nodes':
+        specifier: ^1.7.0
+        version: 1.8.0
+      '@codama/nodes-from-anchor':
+        specifier: ^1.5.0
+        version: 1.5.1(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)
+      '@codama/renderers-js':
+        specifier: ^2.2.0
+        version: 2.2.0(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)
+      '@solana/kit':
+        specifier: ^6.9.0
+        version: 6.9.0(bufferutil@4.1.0)(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)(utf-8-validate@6.0.6)
+      '@solana/program-client-core':
+        specifier: ^6.9.0
+        version: 6.9.0(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)
+      '@solana/web3.js':
+        specifier: ^1.98.4
+        version: 1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
+      codama:
+        specifier: ^1.7.0
+        version: 1.8.0
+    devDependencies:
+      '@types/node':
+        specifier: ^20
+        version: 20.19.43
       typescript:
         specifier: ^5.7.3
         version: 5.9.3
@@ -354,41 +379,41 @@ packages:
       '@types/react':
         optional: true
 
-  '@codama/cli@1.5.2':
-    resolution: {integrity: sha512-d5b6+m0TFYsIii4ALPIWrC6vGNbTLCXOaBqZO5WdI522w4jlk2MQozuSDVhAMBWQjxt9QD/WOJer8PHYwa1rYA==}
+  '@codama/cli@1.5.3':
+    resolution: {integrity: sha512-RgLwZ24sGkPDwaH3DovOY3e1VXPnPwDBXojYXyOzPmEjQ23yTKacrLa3Zlt/XjMsXv9cLOym5OheC+gG6GxIpg==}
     hasBin: true
 
-  '@codama/errors@1.7.0':
-    resolution: {integrity: sha512-N1E4LT3XRYqHHJAnL+eVQ5V3Pc0uSPjsn4Xt6QEO6Fz1p0slF6hbD+/axkFUc7+lNCAfgnkKzhk+6SpFLU/WrQ==}
+  '@codama/errors@1.8.0':
+    resolution: {integrity: sha512-A0FNhbfS1PBSK0nS+g65IR8+OKkifuIJCCnLCUBXb+I/OYMGlJMycMpU4pwAEEGS5GAnue7D/llXE+KpUaMi8w==}
     hasBin: true
 
-  '@codama/fragments@0.1.0':
-    resolution: {integrity: sha512-rWnSKw4UA9LS7mMQyzKnR1woibVEYrYgp66+i+JB+O1lnvU/i/KCH4TmoV+S6Y3ADL2WyznrwfDA3rBET6U5Cg==}
+  '@codama/fragments@0.1.1':
+    resolution: {integrity: sha512-+DeC2YklyYf+qjRkoTKeG6HFgwsW7hiQko7er18dgsxF15M316EwYL2W40nKDPWlEhB/iME+sZR5++VQPUO/6w==}
 
-  '@codama/node-types@1.7.0':
-    resolution: {integrity: sha512-VDytcSgN6jOGEh4aJ1LgSnqCe1drSEUSdAeKOV92aU0MOYiDi2s2B18+Gx7dx40mex2GfVc3zamu7KGzTlxegA==}
+  '@codama/node-types@1.8.0':
+    resolution: {integrity: sha512-KE9K9jjEdeFKtDKRrjjm5YwEkg7l+YwoWiH2w1UXJL/x6P5uul6+O5WnGsJn8IFtBVSLN4hbD7YSsZ0/lktJxQ==}
 
-  '@codama/nodes-from-anchor@1.5.0':
-    resolution: {integrity: sha512-zbDkjNgMk0EGxHIOOlIq/G2KfXQ7rQrfwogw56MR7nQs6UFGKXnNLJUXiq1m8s3CzfoucvTo49z4mNKTEcGDhQ==}
+  '@codama/nodes-from-anchor@1.5.1':
+    resolution: {integrity: sha512-AQee53GV/OY+jJE4PsORPoSagFwGMul1cpSBYhKzvxcrJg1xBesiblPqweNDVIW3NyskHB+x1kQpuq6bsJdb+w==}
 
-  '@codama/nodes@1.7.0':
-    resolution: {integrity: sha512-PZ1zI+SbE1PEaGEka0KjdFrAJ7e9O0kPG4CCGYhjsqUo76OBbINRjNVx7pkP4r8Ksa2r/BLbVIfZV1M/n5J5Kg==}
+  '@codama/nodes@1.8.0':
+    resolution: {integrity: sha512-rl+7BxYatAE6uq5h9b5fEilGLd3YeJaJxqgLDAvdKQ5pspq6ch5ww9NiigkwdvDYli1Yk56PRhMZdLsiZIVgAA==}
 
-  '@codama/renderers-core@1.3.8':
-    resolution: {integrity: sha512-xy9Qb5BLYTi1OyvlRhRD7n0HUevOQ3QcHSPq9N3kqoUOgL2ziXPXvoejzzLC0OkvA16M7WvK3ihNx/nf4UEClQ==}
+  '@codama/renderers-core@1.3.9':
+    resolution: {integrity: sha512-DwMxltM+cldAK+rgtE3jVOmrGZuP7fA/ZLu6vgrsQYBp5dkOXCyiGBdpAz0VlhxaN4lB5TzT2Ia+EVv5G4YdGQ==}
 
   '@codama/renderers-js@2.2.0':
     resolution: {integrity: sha512-/GWVnB329kMkeqlOqX+NWQAmd1k6yybVOp7C5X+LEvrZ2A5w1saQwWFbBMCq/EQPqnFU+CRFoG/+7KubAEa73Q==}
     engines: {node: '>=20.18.0'}
 
-  '@codama/validators@1.7.0':
-    resolution: {integrity: sha512-PBWN4zLikf6sssZD6sDVN7ASbh++fzvZ5pluHu6VlSQDk7lFL3Gsh7P1Q5JgIuXkM2gFntzCrTJSStToDCAW3g==}
+  '@codama/validators@1.8.0':
+    resolution: {integrity: sha512-gDmS85DwWmT41+PWTlbBrkSopGKW4UPhEcX+SLb2fF/uXMpJQXcgLE8BE9Fr7/DO+M9yFtGOVrnfDSCwepORGg==}
 
-  '@codama/visitors-core@1.7.0':
-    resolution: {integrity: sha512-ii1Z39ORzssMQdpxqpjaHCLbFwO4KZbI1SrsJ1e0r+0g03gxuYEA1H6RoxcrIOuUeOnqNtLb96cErrzHdrx23Q==}
+  '@codama/visitors-core@1.8.0':
+    resolution: {integrity: sha512-CLO0icVvzAutjI7imuN1Rib0/GIBc7hhwQ5gcE3aVAVBHUNS4M27BzagqYTpL0cMC9I1tL9c6lhpCBV2kKs6Zg==}
 
-  '@codama/visitors@1.7.0':
-    resolution: {integrity: sha512-wk8ufgX3AfKOnaok5H4y1UteLyY/WkDIhhKRE7y5MJqOn5JnxLgL9R4MU2+5TmZUF04sdwyUn6fPho0IqTq+BQ==}
+  '@codama/visitors@1.8.0':
+    resolution: {integrity: sha512-vQ863YkHBdLWZeaiPKisiRe0bbuBEBe9xDWVcLCCLRsmKCQuS+GB4bKxIwrlTr9cxCOGyQLkI7B/yAqyYEdbmw==}
 
   '@coral-xyz/anchor-errors@0.30.1':
     resolution: {integrity: sha512-9Mkradf5yS5xiLWrl9WrpjqOrAV+/W2RQHDlbnAZBivoGpOs1ECjoDCkVk4aRG8ZdiFiB8zQEVlxf+8fKkmSfQ==}
@@ -2438,8 +2463,8 @@ packages:
     resolution: {integrity: sha512-eYm0QWBtUrBWZWG0d386OGAw16Z995PiOVo2B7bjWSbHedGl5e0ZWaq65kOGgUSNesEIDkB9ISbTg/JK9dhCZA==}
     engines: {node: '>=6'}
 
-  codama@1.7.0:
-    resolution: {integrity: sha512-kPB7IPAJkPAllxHiPtNDv6+qhTvfRpetYJgxp1iVa4L+BxztmSXTKMZ3Bsjve4ArENvxuUY4GIAchOYqb3G6nw==}
+  codama@1.8.0:
+    resolution: {integrity: sha512-P1hctEUpZfgjm3xfosrD4xo/SVnp17ONuGDDtBmkyOaJBBL2JkYXjomZF9xOQqhvlfgcgqRKNB96Lcs4MG/fLQ==}
     hasBin: true
 
   code-block-writer@13.0.3:
@@ -5297,56 +5322,56 @@ snapshots:
     optionalDependencies:
       '@types/react': 19.2.17
 
-  '@codama/cli@1.5.2':
+  '@codama/cli@1.5.3':
     dependencies:
-      '@codama/nodes': 1.7.0
-      '@codama/visitors': 1.7.0
-      '@codama/visitors-core': 1.7.0
+      '@codama/nodes': 1.8.0
+      '@codama/visitors': 1.8.0
+      '@codama/visitors-core': 1.8.0
       commander: 14.0.3
       picocolors: 1.1.1
       prompts: 2.4.2
 
-  '@codama/errors@1.7.0':
+  '@codama/errors@1.8.0':
     dependencies:
-      '@codama/node-types': 1.7.0
+      '@codama/node-types': 1.8.0
       commander: 14.0.3
       picocolors: 1.1.1
 
-  '@codama/fragments@0.1.0':
+  '@codama/fragments@0.1.1':
     dependencies:
-      '@codama/errors': 1.7.0
+      '@codama/errors': 1.8.0
 
-  '@codama/node-types@1.7.0': {}
+  '@codama/node-types@1.8.0': {}
 
-  '@codama/nodes-from-anchor@1.5.0(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)':
+  '@codama/nodes-from-anchor@1.5.1(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)':
     dependencies:
-      '@codama/errors': 1.7.0
-      '@codama/nodes': 1.7.0
-      '@codama/visitors': 1.7.0
+      '@codama/errors': 1.8.0
+      '@codama/nodes': 1.8.0
+      '@codama/visitors': 1.8.0
       '@noble/hashes': 2.2.0
       '@solana/codecs': 5.5.1(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)
     transitivePeerDependencies:
       - fastestsmallesttextencoderdecoder
       - typescript
 
-  '@codama/nodes@1.7.0':
+  '@codama/nodes@1.8.0':
     dependencies:
-      '@codama/errors': 1.7.0
-      '@codama/node-types': 1.7.0
+      '@codama/errors': 1.8.0
+      '@codama/node-types': 1.8.0
 
-  '@codama/renderers-core@1.3.8':
+  '@codama/renderers-core@1.3.9':
     dependencies:
-      '@codama/errors': 1.7.0
-      '@codama/fragments': 0.1.0
-      '@codama/nodes': 1.7.0
-      '@codama/visitors-core': 1.7.0
+      '@codama/errors': 1.8.0
+      '@codama/fragments': 0.1.1
+      '@codama/nodes': 1.8.0
+      '@codama/visitors-core': 1.8.0
 
   '@codama/renderers-js@2.2.0(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)':
     dependencies:
-      '@codama/errors': 1.7.0
-      '@codama/nodes': 1.7.0
-      '@codama/renderers-core': 1.3.8
-      '@codama/visitors-core': 1.7.0
+      '@codama/errors': 1.8.0
+      '@codama/nodes': 1.8.0
+      '@codama/renderers-core': 1.3.9
+      '@codama/visitors-core': 1.8.0
       '@solana/codecs-strings': 6.9.0(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)
       prettier: 3.8.4
       semver: 7.8.4
@@ -5354,23 +5379,23 @@ snapshots:
       - fastestsmallesttextencoderdecoder
       - typescript
 
-  '@codama/validators@1.7.0':
+  '@codama/validators@1.8.0':
     dependencies:
-      '@codama/errors': 1.7.0
-      '@codama/nodes': 1.7.0
-      '@codama/visitors-core': 1.7.0
+      '@codama/errors': 1.8.0
+      '@codama/nodes': 1.8.0
+      '@codama/visitors-core': 1.8.0
 
-  '@codama/visitors-core@1.7.0':
+  '@codama/visitors-core@1.8.0':
     dependencies:
-      '@codama/errors': 1.7.0
-      '@codama/nodes': 1.7.0
+      '@codama/errors': 1.8.0
+      '@codama/nodes': 1.8.0
       json-stable-stringify: 1.3.0
 
-  '@codama/visitors@1.7.0':
+  '@codama/visitors@1.8.0':
     dependencies:
-      '@codama/errors': 1.7.0
-      '@codama/nodes': 1.7.0
-      '@codama/visitors-core': 1.7.0
+      '@codama/errors': 1.8.0
+      '@codama/nodes': 1.8.0
+      '@codama/visitors-core': 1.8.0
 
   '@coral-xyz/anchor-errors@0.30.1': {}
 
@@ -6743,7 +6768,7 @@ snapshots:
     transitivePeerDependencies:
       - fastestsmallesttextencoderdecoder
 
-  '@solana/spl-token-group@0.0.7(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)':
+  '@solana/spl-token-group@0.0.7(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)':
     dependencies:
       '@solana/codecs': 2.0.0-rc.1(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)
       '@solana/web3.js': 1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
@@ -6751,7 +6776,7 @@ snapshots:
       - fastestsmallesttextencoderdecoder
       - typescript
 
-  '@solana/spl-token-metadata@0.1.6(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)':
+  '@solana/spl-token-metadata@0.1.6(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)':
     dependencies:
       '@solana/codecs': 2.0.0-rc.1(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)
       '@solana/web3.js': 1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
@@ -6763,8 +6788,8 @@ snapshots:
     dependencies:
       '@solana/buffer-layout': 4.0.1
       '@solana/buffer-layout-utils': 0.2.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
-      '@solana/spl-token-group': 0.0.7(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)
-      '@solana/spl-token-metadata': 0.1.6(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)
+      '@solana/spl-token-group': 0.0.7(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)
+      '@solana/spl-token-metadata': 0.1.6(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3))(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.3)
       '@solana/web3.js': 1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)
       buffer: 6.0.3
     transitivePeerDependencies:
@@ -7135,7 +7160,7 @@ snapshots:
 
   '@types/connect@3.4.38':
     dependencies:
-      '@types/node': 20.19.43
+      '@types/node': 22.19.21
 
   '@types/estree@1.0.9': {}
 
@@ -7183,11 +7208,11 @@ snapshots:
 
   '@types/ws@7.4.7':
     dependencies:
-      '@types/node': 20.19.43
+      '@types/node': 22.19.21
 
   '@types/ws@8.18.1':
     dependencies:
-      '@types/node': 20.19.43
+      '@types/node': 22.19.21
 
   '@types/yargs-parser@21.0.3': {}
 
@@ -7776,13 +7801,13 @@ snapshots:
 
   clsx@2.1.1: {}
 
-  codama@1.7.0:
+  codama@1.8.0:
     dependencies:
-      '@codama/cli': 1.5.2
-      '@codama/errors': 1.7.0
-      '@codama/nodes': 1.7.0
-      '@codama/validators': 1.7.0
-      '@codama/visitors': 1.7.0
+      '@codama/cli': 1.5.3
+      '@codama/errors': 1.8.0
+      '@codama/nodes': 1.8.0
+      '@codama/validators': 1.8.0
+      '@codama/visitors': 1.8.0
 
   code-block-writer@13.0.3: {}
 
@@ -8938,7 +8963,7 @@ snapshots:
 
   isexe@3.1.5: {}
 
-  isomorphic-ws@4.0.1(ws@7.5.11(bufferutil@4.1.0)(utf-8-validate@6.0.6)):
+  isomorphic-ws@4.0.1(ws@7.5.11(bufferutil@4.1.0)):
     dependencies:
       ws: 7.5.11(bufferutil@4.1.0)(utf-8-validate@6.0.6)
 
@@ -8960,7 +8985,7 @@ snapshots:
       delay: 5.0.0
       es6-promisify: 5.0.0
       eyes: 0.1.8
-      isomorphic-ws: 4.0.1(ws@7.5.11(bufferutil@4.1.0)(utf-8-validate@6.0.6))
+      isomorphic-ws: 4.0.1(ws@7.5.11(bufferutil@4.1.0))
       json-stringify-safe: 5.0.1
       stream-json: 1.9.1
       uuid: 8.3.2
