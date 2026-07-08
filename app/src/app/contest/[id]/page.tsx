@@ -6,13 +6,17 @@ import { useParams } from 'next/navigation';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import { PublicKey } from '@solana/web3.js';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Trophy, Timer, Users, Search, X, Plus, ChevronRight, Wallet } from 'lucide-react';
+import Navbar from '@/components/layout/navbar';
+import Footer from '@/components/layout/footer';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { WalletButton } from '@/solana/components/wallet-button';
+import { Input } from '@/components/ui/input';
+
 import { connection, rpc, PROGRAM_ID, ROLE_LABELS, CONTEST_STATUS_LABELS, ROLE_COLORS, CONTEST_STATUS_COLORS, formatUSDC, formatTimestamp, ROLE_REQUIREMENTS, LINEUP_SIZE } from '@/solana/client';
 import { toast } from 'sonner';
-
 import { decodeAthletePool, ATHLETE_POOL_DISCRIMINATOR, decodeContest, CONTEST_DISCRIMINATOR, findContestPda, AthleteRole, ContestStatus } from '@dexi/sdk';
 import { getBase58Decoder } from '@solana/kit';
 
@@ -44,6 +48,8 @@ function ContestDetailContent() {
   const [selectedAthletes, setSelectedAthletes] = useState<Athlete[]>([]);
   const [loading, setLoading] = useState(false);
   const [availableAthletes, setAvailableAthletes] = useState<Athlete[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [roleFilter, setRoleFilter] = useState('all');
 
   useEffect(() => {
     async function fetchAthletes() {
@@ -174,9 +180,7 @@ function ContestDetailContent() {
       const [configPda] = await findConfigPda();
       const [entryPda] = await findEntryPda({ contest: contestKey.toString() as any, user: userKey.toString() as any });
 
-      // Unique mints in lineup
       const uniqueMints = Array.from(new Set(selectedAthletes.map(a => a.mint)));
-
       const remainingAccounts = [];
 
       for (const mintStr of uniqueMints) {
@@ -198,7 +202,6 @@ function ContestDetailContent() {
       const lutAddress = new PublicKey(contest!.addressLookupTable);
       const lookupTableAccount = (await connection.getAddressLookupTable(lutAddress, { commitment: 'confirmed' })).value!;
 
-      // Step 2: Enter Contest
       toast.info('Entering contest... Please approve the transaction.');
       const lineupAddresses = selectedAthletes.map(a => a.mint);
       
@@ -246,209 +249,332 @@ function ContestDetailContent() {
     }
   };
 
+  const filteredAthletes = useMemo(() => {
+    return availableAthletes.filter(athlete => {
+      const matchesSearch = athlete.name.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesRole = roleFilter === 'all' || ROLE_LABELS[athlete.role] === roleFilter;
+      return matchesSearch && matchesRole;
+    });
+  }, [availableAthletes, searchQuery, roleFilter]);
+
   if (!contest) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <p>Contest not found</p>
+      <div className="min-h-screen bg-[#0a0a0f] flex flex-col">
+        <Navbar />
+        <div className="flex-1 flex items-center justify-center">
+          <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!connected) {
+    return (
+      <div className="min-h-screen bg-[#0a0a0f] flex flex-col">
+        <Navbar />
+        <main className="flex-1 flex items-center justify-center p-4">
+          <Card className="glass w-full max-w-md text-center p-8 border-white/10 shadow-[0_0_50px_rgba(0,255,136,0.1)]">
+            <div className="w-24 h-24 bg-gradient-to-br from-[#00ff88]/20 to-transparent rounded-full flex items-center justify-center mx-auto mb-6">
+              <Trophy className="w-12 h-12 text-[#00ff88]" />
+            </div>
+            <h2 className="text-3xl font-black text-white mb-4">Connect to Enter</h2>
+            <p className="text-muted-foreground mb-8 leading-relaxed">
+              Join fantasy contests, draft your dream lineup, and compete for USDC prizes settled instantly on Solana.
+            </p>
+            <Button size="lg" className="w-full h-14 bg-[#00ff88] hover:bg-[#00ff88]/90 text-black font-bold rounded-xl text-lg glow-green" onClick={() => setVisible(true)}>
+              <Wallet className="mr-2 h-5 w-5" /> Connect Wallet
+            </Button>
+          </Card>
+        </main>
+      </div>
+    );
+  }
+
+  if (contest.status !== 0) {
+    return (
+      <div className="min-h-screen bg-[#0a0a0f] flex flex-col">
+        <Navbar />
+        <main className="flex-1 container mx-auto px-4 py-8">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground mb-6">
+            <a href="/" className="hover:text-white transition-colors">Dashboard</a>
+            <ChevronRight className="w-4 h-4" />
+            <span className="text-white">Contest #{contest.id}</span>
+          </div>
+
+          <Card className="glass overflow-hidden border-white/10">
+            <div className="bg-gradient-to-r from-white/5 to-transparent border-b border-white/5 p-8">
+              <div className="flex justify-between items-start">
+                <div>
+                  <h1 className="text-4xl font-black text-white mb-4">Contest #{contest.id}</h1>
+                  <Badge className={`${contest.status === 1 ? 'bg-amber-500/20 text-amber-500' : 'bg-blue-500/20 text-blue-500'} border-none text-sm px-3 py-1`}>
+                    {CONTEST_STATUS_LABELS[contest.status]}
+                  </Badge>
+                </div>
+              </div>
+            </div>
+            <CardContent className="p-8">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
+                <div className="p-6 bg-white/5 rounded-2xl">
+                  <p className="text-muted-foreground uppercase tracking-wider text-sm font-medium mb-2">Total Entries</p>
+                  <p className="text-4xl font-black text-white">{contest.entryCount}</p>
+                </div>
+                <div className="p-6 bg-white/5 rounded-2xl border border-white/5">
+                  <p className="text-muted-foreground uppercase tracking-wider text-sm font-medium mb-2">Prize Pool</p>
+                  <p className="text-4xl font-black text-[#00ff88]">${formatUSDC(contest.prizePool)}</p>
+                </div>
+                <div className="p-6 bg-white/5 rounded-2xl">
+                  <p className="text-muted-foreground uppercase tracking-wider text-sm font-medium mb-2">Winners</p>
+                  <p className="text-4xl font-black text-white">Top {contest.winnerCount}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </main>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <a href="/" className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center">
-                <span className="text-xl font-bold text-primary-foreground">D</span>
-              </div>
-              <h1 className="text-2xl font-bold tracking-tight">Dexi</h1>
-            </a>
-            <nav className="flex items-center gap-6 ml-8">
-              <a href="/" className="text-sm font-medium text-muted-foreground hover:text-foreground">Dashboard</a>
-              <a href="/markets" className="text-sm font-medium text-muted-foreground hover:text-foreground">Markets</a>
-              {connected && <a href="/admin" className="text-sm font-medium text-muted-foreground hover:text-foreground">Admin</a>}
-            </nav>
-          </div>
-          <WalletButton />
+    <div className="min-h-screen bg-[#0a0a0f] flex flex-col overflow-hidden">
+      <Navbar />
+      
+      <main className="flex-1 container mx-auto px-4 py-8">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground mb-6">
+          <a href="/" className="hover:text-white transition-colors">Dashboard</a>
+          <ChevronRight className="w-4 h-4" />
+          <span className="text-white">Contest #{contest.id}</span>
         </div>
-      </header>
 
-      <main className="container mx-auto px-4 py-8">
-        {!connected ? (
-          <div className="flex flex-col items-center justify-center py-20">
-            <Card className="max-w-md w-full">
-              <CardHeader className="text-center">
-                <CardTitle className="text-3xl">Connect Wallet</CardTitle>
-                <CardDescription>
-                  Connect your wallet to enter the contest
-                </CardDescription>
+        {/* Contest Info Header */}
+        <Card className="glass mb-8 border-t-4 border-t-[#00ff88] border-x-white/10 border-b-white/10 overflow-hidden">
+          <div className="bg-gradient-to-r from-[#00ff88]/5 to-transparent p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h1 className="text-2xl font-black text-white">Contest #{contest.id}</h1>
+              <Badge className="bg-[#00ff88]/20 text-[#00ff88] border-[#00ff88]/30 px-3 py-1">
+                <span className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-[#00ff88] animate-pulse"></span>
+                  Open
+                </span>
+              </Badge>
+            </div>
+            
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+              <div>
+                <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-1">Prize Pool</p>
+                <p className="text-3xl font-black text-[#00ff88]">${formatUSDC(contest.prizePool)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-1">Start Time</p>
+                <div className="flex items-center gap-2 text-white font-medium text-lg">
+                  <Timer className="w-5 h-5 text-muted-foreground" />
+                  {formatTimestamp(contest.startTime)}
+                </div>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-1">Entries</p>
+                <div className="flex items-center gap-2 text-white font-medium text-lg">
+                  <Users className="w-5 h-5 text-muted-foreground" />
+                  {contest.entryCount}
+                </div>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-1">Winners</p>
+                <p className="text-xl font-bold text-white">Top {contest.winnerCount}</p>
+              </div>
+            </div>
+          </div>
+          
+          <div className="px-6 py-3 bg-white/5 border-t border-white/5">
+            <div className="w-full h-2 bg-black rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-[#00ff88] rounded-full transition-all duration-1000" 
+                style={{ width: `${Math.min(100, Math.max(5, (contest.entryCount / 100) * 100))}%` }}
+              ></div>
+            </div>
+          </div>
+        </Card>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+          
+          {/* Left: Lineup Builder */}
+          <div className="lg:col-span-2 space-y-6">
+            <Card className="glass border-white/10 shadow-xl">
+              <CardHeader className="border-b border-white/5 flex flex-row items-center justify-between py-4">
+                <CardTitle className="text-xl">Your Lineup</CardTitle>
+                <Badge variant="outline" className={`px-3 py-1 border-white/10 ${selectedAthletes.length === 11 ? 'bg-[#00ff88]/20 text-[#00ff88] border-[#00ff88]/30' : 'bg-white/5 text-white'}`}>
+                  {selectedAthletes.length} / 11 Players
+                </Badge>
               </CardHeader>
-              <CardContent className="text-center space-y-4">
-                <Button size="lg" className="w-full rounded-full" onClick={() => setVisible(true)}>
-                  Connect Wallet
+              <CardContent className="p-6">
+                
+                {/* Role Requirements */}
+                <div className="flex flex-wrap gap-2 mb-6 p-4 bg-black/40 rounded-xl border border-white/5">
+                  <Badge className={`px-3 py-1 text-sm border-none ${roleCounts.GK >= ROLE_REQUIREMENTS.GK ? 'bg-amber-500/20 text-amber-500' : 'bg-white/5 text-muted-foreground'}`}>
+                    GK: {roleCounts.GK}/{ROLE_REQUIREMENTS.GK}
+                  </Badge>
+                  <Badge className={`px-3 py-1 text-sm border-none ${roleCounts.DEF >= ROLE_REQUIREMENTS.DEF ? 'bg-sky-500/20 text-sky-500' : 'bg-white/5 text-muted-foreground'}`}>
+                    DEF: {roleCounts.DEF}/{ROLE_REQUIREMENTS.DEF}
+                  </Badge>
+                  <Badge className={`px-3 py-1 text-sm border-none ${roleCounts.MID >= ROLE_REQUIREMENTS.MID ? 'bg-emerald-500/20 text-emerald-500' : 'bg-white/5 text-muted-foreground'}`}>
+                    MID: {roleCounts.MID}/{ROLE_REQUIREMENTS.MID}
+                  </Badge>
+                  <Badge className={`px-3 py-1 text-sm border-none ${roleCounts.FWD >= ROLE_REQUIREMENTS.FWD ? 'bg-rose-500/20 text-rose-500' : 'bg-white/5 text-muted-foreground'}`}>
+                    FWD: {roleCounts.FWD}/{ROLE_REQUIREMENTS.FWD}
+                  </Badge>
+                </div>
+
+                {/* Lineup Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-8 min-h-[300px]">
+                  <AnimatePresence>
+                    {selectedAthletes.map((athlete) => (
+                      <motion.div
+                        key={athlete.mint}
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.9 }}
+                        layout
+                        className="bg-white/5 border border-white/10 rounded-xl p-3 flex items-center justify-between group hover:border-white/20 transition-all"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-white/20 to-transparent flex items-center justify-center font-bold text-white text-sm border border-white/5 shadow-inner">
+                            {athlete.name[0]}
+                          </div>
+                          <div>
+                            <p className="font-bold text-white text-sm">{athlete.name}</p>
+                            <Badge className={`${ROLE_COLORS[ROLE_LABELS[athlete.role]]} text-white border-none text-[10px] px-1.5 py-0`}>
+                              {ROLE_LABELS[athlete.role]}
+                            </Badge>
+                          </div>
+                        </div>
+                        <button 
+                          onClick={() => removeAthlete(athlete.mint)}
+                          className="w-8 h-8 rounded-full bg-black/40 flex items-center justify-center text-muted-foreground hover:bg-[#ff4757]/20 hover:text-[#ff4757] transition-colors"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+
+                  {/* Empty Slots */}
+                  {Array.from({ length: Math.max(0, LINEUP_SIZE - selectedAthletes.length) }).map((_, i) => (
+                    <div key={`empty-${i}`} className="border-2 border-dashed border-white/10 rounded-xl p-3 flex items-center justify-center bg-white/[0.01] h-[66px]">
+                      <span className="text-sm font-medium text-muted-foreground/50 flex items-center gap-2">
+                        + Empty Slot
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Errors */}
+                {roleErrors.length > 0 && selectedAthletes.length > 0 && (
+                  <div className="mb-6 p-4 rounded-xl bg-[#ff4757]/10 border border-[#ff4757]/20 text-[#ff4757] text-sm">
+                    <strong>Lineup Requirements:</strong> You need {roleErrors.join(', ')}.
+                  </div>
+                )}
+
+                {/* Submit */}
+                <Button 
+                  size="lg"
+                  className={`w-full h-14 text-lg font-bold rounded-xl transition-all ${
+                    isValidLineup 
+                      ? 'bg-[#00ff88] hover:bg-[#00ff88]/90 text-black glow-green' 
+                      : 'bg-white/5 text-muted-foreground border border-white/10'
+                  }`}
+                  onClick={handleEnterContest}
+                  disabled={loading || !isValidLineup}
+                >
+                  {loading ? 'Entering Contest...' : 'Enter Contest'}
                 </Button>
               </CardContent>
             </Card>
           </div>
-        ) : contest.status !== 0 ? (
-          <div className="space-y-6">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <a href="/" className="hover:text-foreground">Dashboard</a>
-              <span>/</span>
-              <span>Contest #{contest.id}</span>
-            </div>
-            <Card>
-              <CardHeader>
-                <CardTitle>Contest #{contest.id}</CardTitle>
-                <CardDescription>
-                  {contest.status === 1 ? 'In Progress' : 'Completed'}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid gap-4 md:grid-cols-3">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Entries</p>
-                    <p className="text-2xl font-bold">{contest.entryCount}</p>
+
+          {/* Right: Athlete Pool */}
+          <div className="lg:col-span-1">
+            <Card className="glass border-white/10 sticky top-24 max-h-[calc(100vh-120px)] flex flex-col shadow-xl">
+              <CardHeader className="border-b border-white/5 pb-4 shrink-0">
+                <CardTitle className="text-xl mb-4">Player Pool</CardTitle>
+                <div className="space-y-4">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input 
+                      placeholder="Search athletes..." 
+                      className="pl-9 bg-black/40 border-white/10 focus-visible:ring-[#00ff88]"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                    />
                   </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Prize Pool</p>
-                    <p className="text-2xl font-bold">${formatUSDC(contest.prizePool)}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Winners</p>
-                    <p className="text-2xl font-bold">Top {contest.winnerCount}</p>
+                  <div className="flex flex-wrap gap-2">
+                    <button 
+                      onClick={() => setRoleFilter('all')}
+                      className={`px-3 py-1 rounded-full text-xs font-semibold ${roleFilter === 'all' ? 'bg-white text-black' : 'bg-white/5 text-muted-foreground hover:bg-white/10'}`}
+                    >
+                      All
+                    </button>
+                    {['GK', 'DEF', 'MID', 'FWD'].map(role => (
+                      <button
+                        key={role}
+                        onClick={() => setRoleFilter(role)}
+                        className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                          roleFilter === role 
+                            ? `${ROLE_COLORS[role]} text-white border-none` 
+                            : 'bg-white/5 text-muted-foreground hover:bg-white/10'
+                        }`}
+                      >
+                        {role}
+                      </button>
+                    ))}
                   </div>
                 </div>
-              </CardContent>
-            </Card>
-          </div>
-        ) : (
-          <div className="space-y-6">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <a href="/" className="hover:text-foreground">Dashboard</a>
-              <span>/</span>
-              <span>Contest #{contest.id}</span>
-            </div>
-
-            <div className="flex items-start justify-between gap-6">
-              <div className="flex-1 space-y-4">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Contest #{contest.id}</CardTitle>
-                    <CardDescription>
-                      Starts {formatTimestamp(contest.startTime)}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid gap-4 md:grid-cols-3">
-                      <div>
-                        <p className="text-sm text-muted-foreground">Entries</p>
-                        <p className="text-2xl font-bold">{contest.entryCount}</p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground">Prize Pool</p>
-                        <p className="text-2xl font-bold">${formatUSDC(contest.prizePool)}</p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground">Winners</p>
-                        <p className="text-2xl font-bold">Top {contest.winnerCount}</p>
-                      </div>
+              </CardHeader>
+              <CardContent className="p-0 overflow-y-auto custom-scrollbar flex-1 min-h-[400px]">
+                <div className="p-4 space-y-2">
+                  {filteredAthletes.length === 0 ? (
+                    <div className="text-center py-10 text-muted-foreground text-sm">
+                      No athletes found matching criteria.
                     </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Your Lineup</CardTitle>
-                    <CardDescription>
-                      Select {LINEUP_SIZE} athletes ({selectedAthletes.length}/{LINEUP_SIZE})
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      <div className="flex items-center gap-4 text-sm">
-                        <Badge className={ROLE_COLORS.GK}>GK: {roleCounts.GK}/{ROLE_REQUIREMENTS.GK}</Badge>
-                        <Badge className={ROLE_COLORS.DEF}>DEF: {roleCounts.DEF}/{ROLE_REQUIREMENTS.DEF}</Badge>
-                        <Badge className={ROLE_COLORS.MID}>MID: {roleCounts.MID}/{ROLE_REQUIREMENTS.MID}</Badge>
-                        <Badge className={ROLE_COLORS.FWD}>FWD: {roleCounts.FWD}/{ROLE_REQUIREMENTS.FWD}</Badge>
-                      </div>
-
-                      <div className="grid gap-2 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-                        {selectedAthletes.map((athlete) => (
-                          <div key={athlete.mint} className="flex items-center justify-between p-3 border rounded-lg">
-                            <div className="flex items-center gap-3">
-                              <Badge className={ROLE_COLORS[ROLE_LABELS[athlete.role]]}>
-                                {ROLE_LABELS[athlete.role]}
-                              </Badge>
-                              <span className="font-medium">{athlete.name}</span>
-                            </div>
-                            <Button variant="ghost" size="sm" onClick={() => removeAthlete(athlete.mint)}>
-                              ×
-                            </Button>
-                          </div>
-                        ))}
-                        {selectedAthletes.length === 0 && (
-                          <p className="text-muted-foreground col-span-3 text-center py-4">
-                            Select athletes from the pool below
-                          </p>
-                        )}
-                      </div>
-
-                      {roleErrors.length > 0 && (
-                        <div className="p-3 bg-destructive/10 text-destructive text-sm rounded-lg">
-                          {roleErrors.join(', ')}
-                        </div>
-                      )}
-
-                      <Button 
-                        className="w-full" 
-                        size="lg"
-                        onClick={handleEnterContest}
-                        disabled={loading || !isValidLineup}
-                      >
-                        {loading ? 'Entering Contest...' : 'Enter Contest'}
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              <Card className="w-[400px]">
-                <CardHeader>
-                  <CardTitle>Athlete Pool</CardTitle>
-                  <CardDescription>
-                    Select athletes for your lineup
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2 max-h-[600px] overflow-y-auto">
-                    {availableAthletes.map((athlete) => {
-                    const isSelected = selectedAthletes.some(a => a.mint === athlete.mint);
+                  ) : (
+                    filteredAthletes.map(athlete => {
+                      const isSelected = selectedAthletes.some(a => a.mint === athlete.mint);
                       return (
                         <button
                           key={athlete.mint}
                           onClick={() => !isSelected && handleSelectAthlete(athlete)}
                           disabled={isSelected}
-                          className="w-full flex items-center justify-between p-3 border rounded-lg hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed text-left"
+                          className={`w-full flex items-center justify-between p-3 rounded-xl text-left transition-all ${
+                            isSelected 
+                              ? 'bg-black/20 opacity-50 cursor-not-allowed border border-transparent' 
+                              : 'bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/20'
+                          }`}
                         >
                           <div className="flex items-center gap-3">
-                            <Badge className={ROLE_COLORS[ROLE_LABELS[athlete.role]]}>
-                              {ROLE_LABELS[athlete.role]}
-                            </Badge>
-                            <span className="font-medium">{athlete.name}</span>
+                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-white/10 to-transparent flex items-center justify-center font-bold text-white text-sm border border-white/5">
+                              {athlete.name[0]}
+                            </div>
+                            <div>
+                              <p className="font-bold text-white text-sm truncate max-w-[150px]">{athlete.name}</p>
+                              <Badge className={`${ROLE_COLORS[ROLE_LABELS[athlete.role]]} text-white border-none text-[10px] px-1.5 py-0`}>
+                                {ROLE_LABELS[athlete.role]}
+                              </Badge>
+                            </div>
                           </div>
-                          {isSelected && <Badge variant="secondary">Selected</Badge>}
+                          {isSelected ? (
+                            <span className="text-xs font-semibold text-muted-foreground px-2">Added</span>
+                          ) : (
+                            <div className="w-8 h-8 rounded-full bg-black/40 flex items-center justify-center text-white hover:bg-[#00ff88] hover:text-black transition-colors">
+                              <Plus className="w-4 h-4" />
+                            </div>
+                          )}
                         </button>
                       );
-                    })}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+                    })
+                  )}
+                </div>
+              </CardContent>
+            </Card>
           </div>
-        )}
+        </div>
       </main>
     </div>
   );
@@ -459,8 +585,8 @@ export default dynamic(() => Promise.resolve(ContestDetailPage), { ssr: false })
 function ContestDetailPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <p>Loading...</p>
+      <div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center">
+        <div className="w-12 h-12 border-4 border-[#00ff88] border-t-transparent rounded-full animate-spin"></div>
       </div>
     }>
       <ContestDetailContent />

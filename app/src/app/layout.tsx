@@ -1,22 +1,17 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Inter } from "next/font/google";
 import { Toaster } from "sonner";
 import "./globals.css";
 import { Providers } from "@/solana/providers/providers";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
 });
 
 export const metadata: Metadata = {
-  title: "Dexi - Fantasy Football on Solana",
-  description: "Build your dream lineup, compete for USDC prizes",
+  title: "DEXI — Fantasy Sports Trading on Solana",
+  description: "Trade athlete tokens, compete in fantasy contests, and win USDC prizes instantly on Solana.",
 };
 
 export default function RootLayout({
@@ -25,14 +20,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased dark`}
-    >
-      <body className="min-h-full flex flex-col">
+    <html lang="en" className={`${inter.variable} dark antialiased`}>
+      <body className="min-h-screen bg-background text-foreground flex flex-col font-sans">
         <Providers>
           {children}
-          <Toaster position="bottom-right" />
+          <Toaster position="bottom-right" theme="dark" />
         </Providers>
       </body>
     </html>
