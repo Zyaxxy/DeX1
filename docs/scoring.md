@@ -62,11 +62,15 @@ user_total_score = Σ(athlete_points) for all 11 athletes in lineup
 
 Where `athlete_points` is the sum of all scoring events they accumulated during the match.
 
-## Implementation Details
+## Implementation — Off-Chain Scoring
 
-- Keeper fetches match stats from a sports data API (e.g., Sportradar, Opta)
-- Keeper computes each athlete's total points using the rules above
-- Keeper computes each user's total score by summing their 11 athletes' points
-- Backend computes final rankings and the exact USDC payout for each winner
-- When a user wants to claim their prize, the Keeper co-signs the `claim_reward` transaction with the exact USDC `amount` they won
-- No on-chain score storage or oracle reads needed for the MVP
+The MVP does **not** store scores or rankings on-chain. The flow is:
+
+1. Keeper fetches match stats from a sports data API (e.g., Sportradar, Opta)
+2. Keeper computes each athlete's total points using the rules above
+3. Keeper computes each user's total score by summing their 11 athletes' points
+4. Backend computes final rankings and the exact USDC payout for each winner
+5. When a user wants to claim their prize, the keeper co-signs the `claim_reward` transaction with the exact USDC `amount` they won
+6. The program validates the keeper signature and pays out — it does not verify the score or payout amount itself
+
+This means the keeper is a trusted party for the MVP. Future versions should move to a trustless Merkle tree verification system.
