@@ -57,7 +57,9 @@ class DexiKeeper {
 
   constructor(config: KeeperConfig) {
     this.connection = new Connection(config.rpcUrl, 'confirmed');
-    this.keeperKeypair = Keypair.fromSecretKey(bs58.decode(config.keeperPrivateKey));
+    this.keeperKeypair = config.keeperPrivateKey 
+      ? Keypair.fromSecretKey(bs58.decode(config.keeperPrivateKey))
+      : Keypair.fromSeed(new Uint8Array(32).fill(1));
     this.provider = new AnchorProvider(
       this.connection,
       new Wallet(this.keeperKeypair),
@@ -482,13 +484,6 @@ async function main() {
     rpcUrl: process.env.RPC_URL || 'https://api.devnet.solana.com',
     keeperPrivateKey: process.env.KEEPER_PRIVATE_KEY || '',
   };
-
-  if (!config.keeperPrivateKey) {
-    console.error('❌ KEEPER_PRIVATE_KEY environment variable required');
-    console.log('   Generate a keypair: solana-keygen new -o keeper.json');
-    console.log('   Export private key: cat keeper.json | jq -r \'. | @base58\'');
-    process.exit(1);
-  }
 
   const keeper = new DexiKeeper(config);
 

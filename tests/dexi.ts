@@ -257,10 +257,10 @@ describe("Dexi", () => {
 
   // Convenience accessors
   const allPoolConfigs: PoolConfig[] = [
-    { name: "Messi", role: "gk" },
-    { name: "Defender", role: "def" },
-    { name: "Midfielder", role: "mid" },
-    { name: "Forward", role: "fwd" },
+    { name: "Neur", role: "gk" },
+    { name: "Kante", role: "def" },
+    { name: "Bruno", role: "mid" },
+    { name: "Messi", role: "fwd" },
   ];
 
   const getPoolMap = (): Record<string, PublicKey> =>
