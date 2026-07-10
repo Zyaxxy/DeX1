@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="50" height="50">
+  <!-- Main Board Outlines -->
+  <g fill="none" stroke="#d2f000" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Left Board -->
+    <path d="M 48 20 L 48 20 L 40 20 M 32 20 L 20 20 M 12 20 L 10 20 A 6 6 0 0 0 4 26 L 4 80 A 6 6 0 0 0 10 86 L 48 86 L 48 "/>
+    <!-- Right Board -->
+    <path d="M 52 20 L 52 20 L 60 20 M 68 20 L 80 20 M 88 20 L 90 20 A 6 6 0 0 1 96 26 L 96 80 A 6 6 0 0 1 90 86 L 52 86 L 52 "/>
+    
+    <!-- Top Rings -->
+    <path d="M 16 14 L 16 26 M 36 14 L 36 26 M 64 14 L 64 26 M 84 14 L 84 26"/>
+  </g>
+
+  <!-- Center Dashed Line (Dots) -->
+  <g fill="#d2f000">
+    <rect x="48" y="22" width="4" height="4"/>
+    <rect x="48" y="32" width="4" height="4"/>
+    <rect x="48" y="42" width="4" height="4"/>
+    <rect x="48" y="52" width="4" height="4"/>
+    <rect x="48" y="62" width="4" height="4"/>
+    <rect x="48" y="72" width="4" height="4"/>
+    <rect x="48" y="82" width="4" height="4"/>
+  </g>
+
+  <!-- Scores (1 : 1) styled as a bold, modern font -->
+  <g fill="#d2f000">
+    <!-- Left '1' -->
+    <path d="M 17 40 L 23 34 L 29 34 L 29 74 L 23 74 L 23 40 L 17 46 Z"/>
+    <!-- Right '1' -->
+    <path d="M 65 40 L 71 34 L 77 34 L 77 74 L 71 74 L 71 40 L 65 46 Z"/>
+  </g>
+</svg>

@@ -1,5 +1,6 @@
 'use client';
 
+import { useRevolvingTitle } from '@/hooks/useRevolvingTitle';
 import dynamic from 'next/dynamic';
 import { useState, useEffect, useMemo } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
@@ -63,6 +64,12 @@ function AdminPage() {
   const [pools, setPools] = useState<PoolData[]>([]);
   const [contests, setContests] = useState<ContestData[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
+
+  useRevolvingTitle([
+    'Admin | DEXI',
+    'Dashboard | DEXI',
+    'Manage Protocol | DEXI',
+  ]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
 

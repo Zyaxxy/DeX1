@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 
 const footerLinks = [
@@ -13,9 +14,8 @@ export default function Footer() {
   return (
     <footer className="w-full bg-[#0a0e18] py-8 px-6 flex justify-between items-center border-t border-[#454932]">
       <div className="flex items-center gap-4 max-w-[1440px] mx-auto w-full">
-        <span className="text-[24px] leading-[28px] font-[600] font-heading text-white tracking-tighter">
-          DEXI
-        </span>
+        <Image src="/DEXI.svg" alt="DEXI" width={28} height={28} className="shrink-0" />
+        <span className="text-[24px] leading-[28px] font-[600] font-heading text-white tracking-tighter">DEXI</span>
         <span className="font-mono text-[14px] leading-[20px] font-[500] tracking-[0.02em] text-[#c6c9ab] hidden sm:block">
           &copy; {new Date().getFullYear()} DEXI Protocol. Kinetic Precision Trading.
         </span>

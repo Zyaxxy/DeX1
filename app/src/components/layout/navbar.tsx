@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { WalletButton } from '@/solana/components/wallet-button';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState } from 'react';
+import Image from 'next/image';
 import { Menu, X, Bell } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -21,8 +22,9 @@ export default function Navbar() {
   return (
     <nav className="sticky top-0 z-50 w-full bg-surface border-b border-border">
       <div className="flex items-center justify-between h-16 px-6 max-w-[1440px] mx-auto w-full">
-        <Link href="/" className="text-[24px] font-[600] font-heading text-white tracking-tighter">
-          DEXI
+        <Link href="/" className="flex items-center gap-2">
+          <Image src="/DEXI.svg" alt="DEXI" width={28} height={28} className="shrink-0" />
+          <span className="text-[24px] font-[600] font-heading text-white tracking-tighter">DEXI</span>
         </Link>
 
         <div className="hidden md:flex gap-8 h-full items-center absolute left-1/2 -translate-x-1/2">

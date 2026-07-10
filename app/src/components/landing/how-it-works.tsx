@@ -27,11 +27,12 @@ export default function HowItWorks() {
     <section className="w-full py-24 px-6 flex justify-center">
       <div className="w-full max-w-[1440px]">
         <div className="mb-16">
+          <p className="font-mono text-[11px] tracking-[0.02em] font-[500] text-[#c6c9ab] mb-2 uppercase">Execution Protocol</p>
           <h2
             className="font-heading font-[700] text-white"
             style={{ fontSize: 'clamp(1.8rem, 3.5vw, 2.5rem)', lineHeight: '1.1', letterSpacing: '-0.02em' }}
           >
-            How it works
+            How It Works
           </h2>
         </div>
 

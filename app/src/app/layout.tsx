@@ -22,8 +22,14 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "DEXI — Fantasy Sports Trading on Solana",
+  title: {
+    template: "%s | DEXI",
+    default: "DEXI : Fantasy Sports Trading",
+  },
   description: "Trade athlete tokens, compete in fantasy contests, and win USDC prizes instantly on Solana.",
+  icons: {
+    icon: "/DEXI.svg",
+  },
 };
 
 export default function RootLayout({

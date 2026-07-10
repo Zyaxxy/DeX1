@@ -1,10 +1,11 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useState, useEffect, useCallback, useMemo, Suspense } from 'react';
 import { useParams } from 'next/navigation';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
+import { useRevolvingTitle } from '@/hooks/useRevolvingTitle';
 import { Copy, Check, BarChart3, Clock } from 'lucide-react';
 
 import Navbar from '@/components/layout/navbar';
@@ -41,6 +42,17 @@ function PoolDetailContent() {
   const { connected, publicKey, signTransaction } = useWallet();
   const { setVisible } = useWalletModal();
   const [pool, setPool] = useState<PoolInfo | null>(null);
+
+  const revolvingTitles = useMemo(() => {
+    const base = pool?.name ? pool.name.replace(/\s+/g, '').toUpperCase() : 'Market';
+    return [
+      `${base} | Markets | DEXI`,
+      `${base} — Live Price | DEXI`,
+      `${base} — Trade Now | DEXI`,
+    ];
+  }, [pool?.name]);
+
+  useRevolvingTitle(revolvingTitles);
   const [buyAmount, setBuyAmount] = useState('');
   const [sellAmount, setSellAmount] = useState('');
   const [loading, setLoading] = useState(false);

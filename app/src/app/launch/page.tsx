@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useRevolvingTitle } from '@/hooks/useRevolvingTitle';
+import { useState, useEffect } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import { motion } from 'framer-motion';
@@ -72,6 +73,12 @@ export default function LaunchPage() {
   const wallet = useWallet();
   const { connected, publicKey, signTransaction } = wallet;
   const { setVisible } = useWalletModal();
+
+  useRevolvingTitle([
+    'Launch Token | DEXI',
+    'Create Athlete Token | DEXI',
+    'New Market | DEXI',
+  ]);
   
   const isAdmin = connected && publicKey?.toBase58() === ADMIN_WALLET_ADDRESS;
   

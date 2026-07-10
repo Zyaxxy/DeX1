@@ -5,8 +5,11 @@ import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { ArrowUpRight, TrendingUp, ArrowUp, ArrowDown, Search } from 'lucide-react';
+import { useRevolvingTitle } from '@/hooks/useRevolvingTitle';
+import Image from 'next/image';
+import { TrendingUp, ArrowUp, ArrowDown, Search } from 'lucide-react';
 import Navbar from '@/components/layout/navbar';
+import { Sidebar, SidebarNavItem } from '@/components/layout/sidebar';
 import Sparkline from '@/components/charts/sparkline';
 import { useMarketData } from '@/hooks/useMarketData';
 import { ROLE_LABELS, ROLE_COLORS } from '@/solana/client';
@@ -46,9 +49,17 @@ export default function MarketsPage() {
   const { setVisible } = useWalletModal();
   const { pools, activities, loading } = useMarketData();
 
+  useRevolvingTitle([
+    'Markets | DEXI',
+    'Live Athlete Markets | DEXI',
+    'Trade Now | DEXI',
+    'On-Chain Markets | DEXI',
+  ]);
+
   const [roleFilter, setRoleFilter] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<string>('volume');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const prevPricesRef = useRef<Map<string, number>>(new Map());
   const [flashMap, setFlashMap] = useState<Map<string, 'up' | 'down' | null>>(new Map());
@@ -96,72 +107,72 @@ export default function MarketsPage() {
 
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
-        <aside className="w-60 bg-surface-container-lowest border-r border-border hidden md:flex flex-col py-6 shrink-0 h-full">
-          <div className="px-6 mb-8">
-            <h2 className="text-[24px] font-[600] font-heading text-white tracking-tighter">DEXI</h2>
-            <p className="font-mono text-[11px] tracking-[0.02em] text-[#c6c9ab]">On-Chain Athlete Markets</p>
-          </div>
-
+        <Sidebar
+          collapsed={sidebarCollapsed}
+          onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
+          header={
+            <>
+              <span className="text-[24px] font-[600] font-heading text-white tracking-tighter">Trade</span>
+              <p className="font-mono text-[11px] tracking-[0.02em] text-[#c6c9ab]">On-Chain Athlete Markets</p>
+            </>
+          }
+        >
           <div className="flex flex-col px-2 space-y-1">
-            <Link
-              href="/markets"
-              className="flex items-center gap-3 px-4 py-2 text-white bg-surface-container-highest border-r-2 border-primary font-mono text-[13px] tracking-[0.02em] transition-all duration-200"
-            >
-              <TrendingUp className="w-4 h-4" />
-              Markets
-            </Link>
-            <a className="flex items-center gap-3 px-4 py-2 text-[#c6c9ab] hover:bg-surface-container-low hover:text-white font-mono text-[13px] tracking-[0.02em] transition-all duration-200 cursor-not-allowed">
-              <ArrowUpRight className="w-4 h-4" />
-              Research
-            </a>
-            <a className="flex items-center gap-3 px-4 py-2 text-[#c6c9ab] hover:bg-surface-container-low hover:text-white font-mono text-[13px] tracking-[0.02em] transition-all duration-200 cursor-not-allowed">
-              <ArrowUp className="w-4 h-4" />
-              Leaderboard
-            </a>
+            <SidebarNavItem href="/markets" icon={TrendingUp} active collapsed={sidebarCollapsed}>Markets</SidebarNavItem>
+            <div className={`flex items-center gap-3 px-4 py-2 text-[#c6c9ab] font-mono text-[13px] tracking-[0.02em] cursor-not-allowed ${sidebarCollapsed ? 'justify-center px-2' : ''}`}>
+              <ArrowUp className="w-4 h-4 shrink-0" />
+              {!sidebarCollapsed && <span>Research</span>}
+            </div>
+            <div className={`flex items-center gap-3 px-4 py-2 text-[#c6c9ab] font-mono text-[13px] tracking-[0.02em] cursor-not-allowed ${sidebarCollapsed ? 'justify-center px-2' : ''}`}>
+              <ArrowUp className="w-4 h-4 shrink-0" />
+              {!sidebarCollapsed && <span>Leaderboard</span>}
+            </div>
           </div>
 
-          <div className="px-6 mt-8">
-            <p className="font-mono text-[11px] tracking-[0.02em] text-[#c6c9ab] mb-4 uppercase">Positions</p>
-            <div className="flex flex-col space-y-1">
-              <button
-                onClick={() => setRoleFilter(null)}
-                className={`flex items-center gap-3 px-3 py-2 rounded-sm text-[13px] font-mono tracking-[0.02em] transition-colors text-left ${
-                  roleFilter === null
-                    ? 'bg-primary/10 text-primary border-l-2 border-primary'
-                    : 'text-[#c6c9ab] hover:text-white hover:bg-surface-container-low'
-                }`}
-              >
-                <div className={`w-1.5 h-1.5 rounded-full ${roleFilter === null ? 'bg-primary' : 'bg-[#454932]'}`} />
-                All Positions
-              </button>
-              {ROLE_KEYS.map(key => (
+          {!sidebarCollapsed && (
+            <div className="px-6 mt-8">
+              <p className="font-mono text-[11px] tracking-[0.02em] text-[#c6c9ab] mb-4 uppercase">Positions</p>
+              <div className="flex flex-col space-y-1">
                 <button
-                  key={key}
-                  onClick={() => setRoleFilter(key)}
+                  onClick={() => setRoleFilter(null)}
                   className={`flex items-center gap-3 px-3 py-2 rounded-sm text-[13px] font-mono tracking-[0.02em] transition-colors text-left ${
-                    roleFilter === key
+                    roleFilter === null
                       ? 'bg-primary/10 text-primary border-l-2 border-primary'
                       : 'text-[#c6c9ab] hover:text-white hover:bg-surface-container-low'
                   }`}
                 >
-                  <div className={`w-1.5 h-1.5 rounded-full ${
-                    roleFilter === key ? 'bg-primary' : 'bg-[#454932]'
-                  }`} />
-                  {ROLE_LABELS[key]}
+                  <div className={`w-1.5 h-1.5 rounded-full ${roleFilter === null ? 'bg-primary' : 'bg-[#454932]'}`} />
+                  All Positions
                 </button>
-              ))}
+                {ROLE_KEYS.map(key => (
+                  <button
+                    key={key}
+                    onClick={() => setRoleFilter(key)}
+                    className={`flex items-center gap-3 px-3 py-2 rounded-sm text-[13px] font-mono tracking-[0.02em] transition-colors text-left ${
+                      roleFilter === key
+                        ? 'bg-primary/10 text-primary border-l-2 border-primary'
+                        : 'text-[#c6c9ab] hover:text-white hover:bg-surface-container-low'
+                    }`}
+                  >
+                    <div className={`w-1.5 h-1.5 rounded-full ${
+                      roleFilter === key ? 'bg-primary' : 'bg-[#454932]'
+                    }`} />
+                    {ROLE_LABELS[key]}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
-          <div className="px-6 mt-auto pt-6">
+          <div className={`mt-auto pt-6 ${sidebarCollapsed ? 'px-2' : 'px-6'}`}>
             <Link
               href="/markets"
-              className="block w-full bg-primary text-[#191e00] font-mono text-[13px] font-bold py-2 text-center hover:bg-primary-fixed-dim transition-colors"
+              className={`block bg-primary text-[#191e00] font-mono text-[13px] font-bold py-2 text-center hover:bg-primary-fixed-dim transition-colors ${sidebarCollapsed ? 'px-0' : 'w-full'}`}
             >
-              Trade Now
+              {!sidebarCollapsed && 'Trade Now'}
             </Link>
           </div>
-        </aside>
+        </Sidebar>
 
         {/* Main Content */}
         <main className="flex-1 overflow-y-auto p-3 bg-surface">

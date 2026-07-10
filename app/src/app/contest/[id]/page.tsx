@@ -8,10 +8,15 @@ import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import { PublicKey, TransactionMessage, VersionedTransaction, TransactionInstruction, SystemProgram } from '@solana/web3.js';
 import { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { findConfigPda, findEntryPda, findContestPda, getEnterContestInstructionDataEncoder } from '@dexi/sdk';
+import { useRevolvingTitle } from '@/hooks/useRevolvingTitle';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Trophy, Users, Search, X, Plus, ChevronRight, Wallet, Check, Shield, Swords, Eye, Goal, Loader2, ExternalLink, ArrowLeft, Clock, DollarSign, Award } from 'lucide-react';
+import {
+  Trophy, Users, Search, X, Plus, ChevronRight, Wallet, Check,
+  Shield, Swords, Eye, Goal, Loader2, ExternalLink, ArrowLeft,
+  Clock, DollarSign, Sparkles, AlertCircle, Zap,
+  Fingerprint, ChevronLeft
+} from 'lucide-react';
 import Navbar from '@/components/layout/navbar';
-import Footer from '@/components/layout/footer';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -55,6 +60,21 @@ const ROLE_LABEL_FULL: Record<string, string> = {
 };
 
 const ROLE_ORDER = ['FWD', 'MID', 'DEF', 'GK'] as const;
+const ROLE_COLORS_MAP: Record<string, string> = {
+  GK: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+  DEF: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+  MID: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+  FWD: 'bg-rose-500/20 text-rose-400 border-rose-500/30',
+};
+
+function formatCountdown(startTime: number): string {
+  const now = Math.floor(Date.now() / 1000);
+  const diff = Math.max(0, startTime - now);
+  const h = Math.floor(diff / 3600);
+  const m = Math.floor((diff % 3600) / 60);
+  const s = diff % 60;
+  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+}
 
 function ContestDetailContent() {
   const params = useParams();
@@ -72,6 +92,14 @@ function ContestDetailContent() {
   const [roleFilter, setRoleFilter] = useState('all');
   const [showConfirm, setShowConfirm] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
+
+  const revolvingTitles = useMemo(() => [
+    contest ? `Contest #${contestId} | DEXI` : 'Contest | DEXI',
+    `Fantasy Contest #${contestId} | DEXI`,
+    `Live Contest #${contestId} | DEXI`,
+  ], [contest, contestId]);
+
+  useRevolvingTitle(revolvingTitles);
 
   useEffect(() => {
     async function fetchAthletes() {
@@ -206,7 +234,6 @@ function ContestDetailContent() {
       const [configPda] = await findConfigPda();
       const [entryPda] = await findEntryPda({ contest: contestPda as any, user: publicKey.toBase58() as any });
 
-      // Deduplicate mints like the Rust program does, so remaining accounts match
       const uniqueMints = Array.from(new Set(selectedAthletes.map(a => a.mint)));
       const remainingAccounts: { address: string; isWritable: boolean; isSigner: boolean }[] = [];
 
@@ -318,18 +345,20 @@ function ContestDetailContent() {
     FWD: ROLE_REQUIREMENTS.FWD,
   };
 
+  const totalSlots = Object.values(maxSlotsByRole).reduce((a, b) => a + b, 0);
+
   if (fetchError && !contest) {
     return (
-      <div className="min-h-screen flex flex-col">
+      <div className="min-h-screen flex flex-col bg-[#0f131d]">
         <Navbar />
         <main className="flex-1 flex items-center justify-center p-4">
-          <div className="surface-raised w-full max-w-md text-center p-10">
-            <div className="w-20 h-20 rounded-2xl surface-elevated flex items-center justify-center mx-auto mb-6">
-              <Trophy className="w-10 h-10 text-negative" />
+          <div className="w-full max-w-md text-center p-10 border border-[#454932] bg-[#1c1f2a]">
+            <div className="w-16 h-16 bg-[#181b25] border border-[#454932] flex items-center justify-center mx-auto mb-5">
+              <Trophy className="w-8 h-8 text-negative" />
             </div>
-            <h2 className="text-2xl font-bold mb-3">Contest Not Found</h2>
-            <p className="text-muted-foreground mb-8 leading-relaxed text-sm">{fetchError}</p>
-            <Button size="lg" className="w-full h-12 text-base font-bold rounded-lg" onClick={() => router.push('/markets')}>
+            <h2 className="font-heading text-[24px] font-[600] text-white mb-2">Contest Not Found</h2>
+            <p className="font-sans text-[16px] leading-[24px] font-[400] text-[#c6c9ab] mb-6">{fetchError}</p>
+            <Button size="lg" className="w-full h-12 font-mono text-[13px] font-[700] bg-primary text-primary-foreground hover:opacity-90 transition-opacity uppercase tracking-wider" onClick={() => router.push('/markets')}>
               <ArrowLeft className="mr-2 h-4 w-4" /> Back to Markets
             </Button>
           </div>
@@ -340,12 +369,12 @@ function ContestDetailContent() {
 
   if (!contest) {
     return (
-      <div className="min-h-screen flex flex-col">
+      <div className="min-h-screen flex flex-col bg-[#0f131d]">
         <Navbar />
         <div className="flex-1 flex items-center justify-center">
           <div className="flex flex-col items-center gap-4">
             <div className="w-10 h-10 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-            <p className="text-sm text-muted-foreground">Loading contest...</p>
+            <p className="font-sans text-[14px] text-[#c6c9ab]">Loading contest...</p>
           </div>
         </div>
       </div>
@@ -354,18 +383,18 @@ function ContestDetailContent() {
 
   if (!connected) {
     return (
-      <div className="min-h-screen flex flex-col">
+      <div className="min-h-screen flex flex-col bg-[#0f131d]">
         <Navbar />
         <main className="flex-1 flex items-center justify-center p-4">
-          <div className="surface-raised w-full max-w-md text-center p-10">
-            <div className="w-20 h-20 rounded-2xl surface-elevated flex items-center justify-center mx-auto mb-6">
-              <Trophy className="w-10 h-10 text-primary" />
+          <div className="w-full max-w-md text-center p-10 border border-[#454932] bg-[#1c1f2a]">
+            <div className="w-16 h-16 bg-[#181b25] border border-[#454932] flex items-center justify-center mx-auto mb-5">
+              <Trophy className="w-8 h-8 text-primary" />
             </div>
-            <h2 className="text-2xl font-bold mb-3">Connect to Enter</h2>
-            <p className="text-muted-foreground mb-8 leading-relaxed text-sm">
+            <h2 className="font-heading text-[24px] font-[600] text-white mb-2">Connect to Enter</h2>
+            <p className="font-sans text-[16px] leading-[24px] font-[400] text-[#c6c9ab] mb-6">
               Join fantasy contests, draft your dream lineup, and compete for USDC prizes settled instantly on Solana.
             </p>
-            <Button size="lg" className="w-full h-12 text-base font-bold rounded-lg" onClick={() => setVisible(true)}>
+            <Button size="lg" className="w-full h-12 font-mono text-[13px] font-[700] bg-primary text-primary-foreground hover:opacity-90 transition-opacity uppercase tracking-wider" onClick={() => setVisible(true)}>
               <Wallet className="mr-2 h-4 w-4" /> Connect Wallet
             </Button>
           </div>
@@ -376,41 +405,43 @@ function ContestDetailContent() {
 
   if (contest.status !== 0) {
     return (
-      <div className="min-h-screen flex flex-col">
+      <div className="min-h-screen flex flex-col bg-[#0f131d]">
         <Navbar />
-        <main className="flex-1 container mx-auto px-4 py-8">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground mb-6">
-            <button onClick={() => router.push('/markets')} className="hover:text-foreground transition-colors">Markets</button>
+        <main className="flex-1 w-full max-w-[1440px] mx-auto px-6 py-8">
+          <div className="flex items-center gap-2 font-mono text-[12px] text-[#c6c9ab] mb-6">
+            <button onClick={() => router.push('/markets')} className="hover:text-white transition-colors">Markets</button>
             <ChevronRight className="w-4 h-4" />
-            <button onClick={() => router.push('/portfolio')} className="hover:text-foreground transition-colors">Portfolio</button>
+            <button onClick={() => router.push('/portfolio')} className="hover:text-white transition-colors">Portfolio</button>
             <ChevronRight className="w-4 h-4" />
-            <span>Contest #{contest.id}</span>
+            <span className="text-white">Contest #{contest.id}</span>
           </div>
 
-          <div className="surface-raised overflow-hidden">
-            <div className="surface-matte border-b border-white/[0.06] p-6 md:p-8">
+          <div className="border border-[#454932] overflow-hidden">
+            <div className="border-b border-[#454932] p-8">
               <div className="flex justify-between items-start">
                 <div>
-                  <h1 className="text-3xl md:text-4xl font-black mb-4">Contest #{contest.id}</h1>
-                  <Badge className={`${contest.status === 1 ? 'bg-amber-500/15 text-amber-400' : 'bg-blue-500/15 text-blue-400'} border-none text-sm px-3 py-1`}>
+                  <h1 className="font-heading text-[clamp(1.8rem,3.5vw,2.5rem)] font-[700] text-white leading-[1.1] tracking-[-0.02em] mb-3">
+                    Contest #{contest.id}
+                  </h1>
+                  <span className={`font-mono text-[12px] font-[700] px-3 py-1 ${contest.status === 1 ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30' : 'bg-blue-500/15 text-blue-400 border border-blue-500/30'}`}>
                     {CONTEST_STATUS_LABELS[contest.status]}
-                  </Badge>
+                  </span>
                 </div>
               </div>
             </div>
-            <div className="p-6 md:p-8">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="p-5 surface-elevated text-center">
-                  <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-2">Total Entries</p>
-                  <p className="text-3xl font-black tabular-nums">{contest.entryCount}</p>
+            <div className="p-8">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="p-5 bg-[#181b25] border border-[#454932] text-center">
+                  <p className="font-mono text-[11px] tracking-[0.02em] font-[500] text-[#c6c9ab] mb-2 uppercase">Total Entries</p>
+                  <p className="font-heading text-[28px] font-[700] text-white">{contest.entryCount}</p>
                 </div>
-                <div className="p-5 surface-elevated text-center">
-                  <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-2">Prize Pool</p>
-                  <p className="text-3xl font-black tabular-nums text-positive">${formatUSDC(contest.prizePool)}</p>
+                <div className="p-5 bg-[#181b25] border border-[#454932] text-center">
+                  <p className="font-mono text-[11px] tracking-[0.02em] font-[500] text-[#c6c9ab] mb-2 uppercase">Prize Pool</p>
+                  <p className="font-heading text-[28px] font-[700] text-primary">${formatUSDC(contest.prizePool)}</p>
                 </div>
-                <div className="p-5 surface-elevated text-center">
-                  <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-2">Winners</p>
-                  <p className="text-3xl font-black tabular-nums">Top {contest.winnerCount}</p>
+                <div className="p-5 bg-[#181b25] border border-[#454932] text-center">
+                  <p className="font-mono text-[11px] tracking-[0.02em] font-[500] text-[#c6c9ab] mb-2 uppercase">Winners</p>
+                  <p className="font-heading text-[28px] font-[700] text-white">Top {contest.winnerCount}</p>
                 </div>
               </div>
             </div>
@@ -421,399 +452,374 @@ function ContestDetailContent() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col bg-[#0f131d]">
       <Navbar />
 
-      <main className="flex-1 container mx-auto px-4 py-6 md:py-8">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground mb-6">
-          <button onClick={() => router.push('/markets')} className="hover:text-foreground transition-colors">Markets</button>
-          <ChevronRight className="w-4 h-4" />
-          <button onClick={() => router.push('/portfolio')} className="hover:text-foreground transition-colors">Portfolio</button>
-          <ChevronRight className="w-4 h-4" />
-          <span>Contest #{contest.id}</span>
+      <main className="flex-1">
+        {/* Breadcrumb */}
+        <div className="w-full max-w-[1440px] mx-auto px-6 pt-5 pb-0">
+          <div className="flex items-center gap-1.5 font-mono text-[12px] text-[#c6c9ab]">
+            <button onClick={() => router.push('/contests')} className="hover:text-white transition-colors">Dashboard</button>
+            <ChevronRight className="w-3 h-3" />
+            <span className="text-white font-[700]">Contest #{contest.id}</span>
+          </div>
         </div>
 
         {/* Contest Header */}
-        <div className="surface-raised mb-6 overflow-hidden">
-          <div className="p-5 md:p-6">
-            <div className="flex items-center justify-between mb-5">
-              <div>
-                <h1 className="text-xl md:text-2xl font-black">Contest #{contest.id}</h1>
-                <div className="flex items-center gap-3 mt-1">
-                  <p className="text-xs text-muted-foreground flex items-center gap-1">
-                    <Clock className="w-3 h-3" />
-                    {formatTimestamp(contest.startTime)}
-                  </p>
-                  <p className="text-xs text-muted-foreground flex items-center gap-1">
-                    <Users className="w-3 h-3" />
-                    {contest.entryCount} entered
+        <div className="w-full max-w-[1440px] mx-auto px-6 py-5">
+          <div className="border border-[#454932] bg-[#1c1f2a] overflow-hidden">
+            <div className="p-6">
+              <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-5">
+                <div>
+                  <div className="flex items-center gap-3 mb-1">
+                    <h1 className="font-heading text-[clamp(1.5rem,2.5vw,2rem)] font-[700] text-white leading-[1.1] tracking-[-0.02em]">
+                      Contest #{contest.id}
+                    </h1>
+                    <span className="inline-flex items-center gap-1.5 font-mono text-[11px] font-[700] text-positive bg-positive/10 px-2.5 py-0.5 border border-positive/20">
+                      <span className="w-1.5 h-1.5 rounded-full bg-positive animate-pulse" />
+                      OPEN
+                    </span>
+                  </div>
+                  <p className="font-mono text-[13px] tracking-[0.02em] text-[#c6c9ab] flex items-center gap-2">
+                    <Clock className="w-3.5 h-3.5" />
+                    Closes in {formatCountdown(contest.startTime)}
                   </p>
                 </div>
+                <div className="flex items-center gap-4 md:text-right">
+                  <div>
+                    <p className="font-mono text-[11px] tracking-[0.02em] font-[500] text-[#c6c9ab] mb-0.5 uppercase">Prize Pool</p>
+                    <p className="font-heading text-[24px] font-[700] text-primary">${formatUSDC(contest.prizePool)}</p>
+                  </div>
+                  <div className="w-px h-10 bg-[#454932]" />
+                  <div>
+                    <p className="font-mono text-[11px] tracking-[0.02em] font-[500] text-[#c6c9ab] mb-0.5 uppercase">Winners</p>
+                    <p className="font-heading text-[24px] font-[700] text-white">Top {contest.winnerCount}</p>
+                  </div>
+                </div>
               </div>
-              <Badge className="bg-positive/15 text-positive border-positive/20 px-3 py-1 text-xs">
-                <span className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-positive animate-pulse" />
-                  Open
-                </span>
-              </Badge>
-            </div>
 
-            <div className="grid grid-cols-3 gap-4 md:gap-6">
+              {/* Entry Progress */}
               <div>
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-0.5 flex items-center gap-1">
-                  <DollarSign className="w-3 h-3" /> Prize Pool
-                </p>
-                <p className="text-xl md:text-2xl font-black tabular-nums text-positive">${formatUSDC(contest.prizePool)}</p>
-              </div>
-              <div>
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-0.5 flex items-center gap-1">
-                  <Users className="w-3 h-3" /> Entries
-                </p>
-                <p className="text-xl md:text-2xl font-black tabular-nums">{contest.entryCount}</p>
-              </div>
-              <div>
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-0.5 flex items-center gap-1">
-                  <Award className="w-3 h-3" /> Winners
-                </p>
-                <p className="text-xl md:text-2xl font-black tabular-nums">Top {contest.winnerCount}</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Prize distribution bar */}
-          {contest.prizeSplit.length > 0 && (
-            <div className="px-5 md:px-6 pb-4 md:pb-5">
-              <div className="flex items-center gap-1 h-2">
-                {contest.prizeSplit.map((share, i) => (
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="font-mono text-[11px] tracking-[0.02em] font-[500] text-[#c6c9ab] uppercase">Entry Progress</span>
+                  <span className="font-mono text-[13px] font-[700] text-[#dfe2f0]">{contest.entryCount} / 100</span>
+                </div>
+                <div className="w-full h-2 bg-[#262a34]">
                   <div
-                    key={i}
-                    className="h-full rounded-full first:rounded-l-full last:rounded-r-full"
-                    style={{
-                      width: `${share / 100}%`,
-                      backgroundColor: `oklch(0.7 0.15 ${140 + i * 30})`,
-                    }}
-                    title={`#${i + 1}: ${share / 100}%`}
+                    className="h-full bg-primary/60 transition-all duration-1000"
+                    style={{ width: `${Math.min(100, Math.max(2, (contest.entryCount / 100) * 100))}%` }}
                   />
-                ))}
+                </div>
               </div>
-              <div className="flex justify-between mt-1.5">
-                {contest.prizeSplit.map((share, i) => (
-                  <span key={i} className="text-[10px] text-muted-foreground">
-                    #{i + 1} {(share / 100).toFixed(0)}%
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="px-5 md:px-6 pb-4 md:pb-5">
-            <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-positive/60 rounded-full transition-all duration-1000"
-                style={{ width: `${Math.min(100, Math.max(4, (contest.entryCount / 100) * 100))}%` }}
-              />
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+        {/* Main Grid: Lineup Builder + Player Pool */}
+        <div className="w-full max-w-[1440px] mx-auto px-6 pb-10">
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-5 items-start">
 
-          {/* Left: Lineup Builder */}
-          <div className="lg:col-span-2 space-y-6">
-            <div className="surface-raised">
-              <div className="flex items-center justify-between p-4 md:p-5 border-b border-white/[0.06]">
-                <h2 className="text-sm font-bold">Your Lineup</h2>
-                <div className="flex items-center gap-2">
-                  {selectedAthletes.length > 0 && (
-                    <button
-                      onClick={clearLineup}
-                      className="text-[11px] text-muted-foreground hover:text-negative transition-colors px-2 py-1 rounded"
-                    >
-                      Clear
-                    </button>
-                  )}
-                  <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
-                    selectedAthletes.length === LINEUP_SIZE
-                      ? 'bg-positive/15 text-positive'
-                      : 'bg-white/5 text-muted-foreground'
-                  }`}>
-                    {selectedAthletes.length} / {LINEUP_SIZE}
-                  </span>
+            {/* Left: Tactical Lineup */}
+            <div className="space-y-5">
+              <div className="border border-[#454932] overflow-hidden">
+                <div className="flex items-center justify-between p-5 border-b border-[#454932]">
+                  <div className="flex items-center gap-2.5">
+                    <Swords className="w-4 h-4 text-primary" />
+                    <h2 className="font-heading text-[20px] font-[600] text-white">Tactical Lineup</h2>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {selectedAthletes.length > 0 && (
+                      <button
+                        onClick={clearLineup}
+                        className="font-mono text-[11px] font-[700] text-[#c6c9ab] hover:text-negative transition-colors px-2 py-1 uppercase tracking-wider"
+                      >
+                        Clear
+                      </button>
+                    )}
+                    <span className={`font-mono text-[12px] font-[700] px-2.5 py-1 ${
+                      selectedAthletes.length === totalSlots
+                        ? 'bg-positive/10 text-positive border border-positive/20'
+                        : 'bg-[#181b25] text-[#c6c9ab] border border-[#454932]'
+                    }`}>
+                      {selectedAthletes.length}/{totalSlots}
+                    </span>
+                  </div>
                 </div>
-              </div>
 
-              <div className="p-4 md:p-5 space-y-5">
-                {/* Role Requirements Bar */}
-                {(['GK', 'DEF', 'MID', 'FWD'] as const).map(role => {
-                  const count = roleCounts[role];
-                  const needed = maxSlotsByRole[role];
-                  const met = count >= needed;
-                  const RoleIcon = ROLE_ICONS[role];
-                  return (
-                    <div key={role} className="flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
-                        met ? 'bg-positive/15 text-positive' : 'bg-white/5 text-muted-foreground'
-                      }`}>
-                        <RoleIcon className="w-4 h-4" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-semibold">{ROLE_LABEL_FULL[role]}</span>
-                          <span className={`text-xs font-bold tabular-nums ${
-                            met ? 'text-positive' : 'text-muted-foreground'
-                          }`}>
-                            {count}/{needed}
-                          </span>
+                <div className="p-5">
+                  {/* Role Summary */}
+                  <div className="flex items-center justify-between mb-4 p-3 bg-[#181b25] border border-[#454932]">
+                    <span className="font-mono text-[12px] tracking-[0.02em] text-[#c6c9ab]">
+                      GK: <strong className={roleCounts.GK >= maxSlotsByRole.GK ? 'text-positive' : 'text-[#c6c9ab]'}>{roleCounts.GK}/{maxSlotsByRole.GK}</strong>
+                      {' | '}DEF: <strong className={roleCounts.DEF >= maxSlotsByRole.DEF ? 'text-positive' : 'text-[#c6c9ab]'}>{roleCounts.DEF}/{maxSlotsByRole.DEF}</strong>
+                      {' | '}MID: <strong className={roleCounts.MID >= maxSlotsByRole.MID ? 'text-positive' : 'text-[#c6c9ab]'}>{roleCounts.MID}/{maxSlotsByRole.MID}</strong>
+                      {' | '}FWD: <strong className={roleCounts.FWD >= maxSlotsByRole.FWD ? 'text-positive' : 'text-[#c6c9ab]'}>{roleCounts.FWD}/{maxSlotsByRole.FWD}</strong>
+                    </span>
+                  </div>
+
+                  {/* Pitch View */}
+                  <div className="relative w-full aspect-[4/3] overflow-hidden border border-[#454932] bg-gradient-to-b from-emerald-950/40 via-emerald-950/20 to-emerald-950/40 mb-5">
+                    <svg className="absolute inset-0 w-full h-full" viewBox="0 0 400 300" preserveAspectRatio="xMidYMid slice">
+                      <rect x="4" y="4" width="392" height="292" rx="4" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="1.5" />
+                      <line x1="200" y1="4" x2="200" y2="296" stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
+                      <circle cx="200" cy="150" r="28" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
+                      <rect x="165" y="4" width="70" height="45" rx="2" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
+                      <rect x="165" y="251" width="70" height="45" rx="2" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
+                      <line x1="20" y1="60" x2="380" y2="60" stroke="rgba(255,255,255,0.02)" strokeWidth="1" strokeDasharray="4,4" />
+                      <line x1="20" y1="140" x2="380" y2="140" stroke="rgba(255,255,255,0.02)" strokeWidth="1" strokeDasharray="4,4" />
+                      <line x1="20" y1="220" x2="380" y2="220" stroke="rgba(255,255,255,0.02)" strokeWidth="1" strokeDasharray="4,4" />
+                    </svg>
+
+                    <div className="absolute inset-0 grid grid-rows-4">
+                      {ROLE_ORDER.map(role => (
+                        <div key={role} className="relative border-b border-white/[0.03] last:border-b-0 p-2">
+                          <span className="font-mono text-[8px] tracking-[0.02em] font-[700] text-white/15 absolute top-1 left-2.5 uppercase">{role}</span>
+                          <div className="flex items-center justify-center gap-1.5 h-full pt-4">
+                            <AnimatePresence mode="popLayout">
+                              {athletesByRole[role].map(athlete => (
+                                <motion.button
+                                  key={athlete.mint}
+                                  layout
+                                  initial={{ opacity: 0, scale: 0.8 }}
+                                  animate={{ opacity: 1, scale: 1 }}
+                                  exit={{ opacity: 0, scale: 0.8 }}
+                                  transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
+                                  onClick={() => removeAthlete(athlete.mint)}
+                                  className={`w-9 h-9 md:w-11 md:h-11 rounded-full flex items-center justify-center font-heading text-[12px] font-[700] transition-all cursor-pointer relative group border-2 ${
+                                    ROLE_COLORS_MAP[role]?.includes('text-amber') ? 'border-amber-500/40 bg-amber-500/20 text-amber-400' :
+                                    ROLE_COLORS_MAP[role]?.includes('text-blue') ? 'border-blue-500/40 bg-blue-500/20 text-blue-400' :
+                                    ROLE_COLORS_MAP[role]?.includes('text-emerald') ? 'border-emerald-500/40 bg-emerald-500/20 text-emerald-400' :
+                                    ROLE_COLORS_MAP[role]?.includes('text-rose') ? 'border-rose-500/40 bg-rose-500/20 text-rose-400' :
+                                    'border-white/20 bg-white/15 text-white'
+                                  }`}
+                                  title={athlete.name}
+                                >
+                                  {athlete.name[0]}
+                                  <span className="absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap bg-black/90 font-mono text-[10px] px-2 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none border border-[#454932]">
+                                    {athlete.name}
+                                  </span>
+                                  <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-negative/80 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <X className="w-2.5 h-2.5" />
+                                  </span>
+                                </motion.button>
+                              ))}
+                            </AnimatePresence>
+                            {Array.from({ length: Math.max(0, maxSlotsByRole[role] - athletesByRole[role].length) }).map((_, i) => (
+                              <div
+                                key={`empty-${role}-${i}`}
+                                className="w-9 h-9 md:w-11 md:h-11 rounded-full border-2 border-dashed border-[#454932] bg-[#181b25]/50 flex items-center justify-center text-[#c6c9ab]"
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                              </div>
+                            ))}
+                          </div>
                         </div>
-                        <div className="w-full h-1 bg-white/5 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full rounded-full transition-all duration-500 ${
-                              met ? 'bg-positive' : 'bg-white/20'
-                            }`}
-                            style={{ width: `${Math.min(100, (count / needed) * 100)}%` }}
-                          />
-                        </div>
-                      </div>
+                      ))}
                     </div>
-                  );
-                })}
+                  </div>
 
-                {/* Pitch Visualization */}
-                <div className="relative w-full aspect-[3/4] md:aspect-[4/3] rounded-xl overflow-hidden border border-white/[0.06] bg-[oklch(0.1_0.02_140)]">
-                  <svg className="absolute inset-0 w-full h-full" viewBox="0 0 400 300" preserveAspectRatio="xMidYMid slice">
-                    <rect x="4" y="4" width="392" height="292" rx="8" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="2" />
-                    <line x1="200" y1="4" x2="200" y2="296" stroke="rgba(255,255,255,0.06)" strokeWidth="1.5" />
-                    <circle cx="200" cy="150" r="30" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="1.5" />
-                    <rect x="160" y="4" width="80" height="50" rx="4" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="1.5" />
-                    <rect x="160" y="246" width="80" height="50" rx="4" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="1.5" />
-                    <line x1="20" y1="60" x2="380" y2="60" stroke="rgba(255,255,255,0.03)" strokeWidth="1" strokeDasharray="4,4" />
-                    <line x1="20" y1="140" x2="380" y2="140" stroke="rgba(255,255,255,0.03)" strokeWidth="1" strokeDasharray="4,4" />
-                    <line x1="20" y1="220" x2="380" y2="220" stroke="rgba(255,255,255,0.03)" strokeWidth="1" strokeDasharray="4,4" />
-                  </svg>
-
-                  <div className="absolute inset-0 grid grid-rows-4">
-                    {ROLE_ORDER.map(role => (
-                      <div key={role} className="relative border-b border-white/[0.03] last:border-b-0 p-1.5 md:p-2">
-                        <span className="text-[9px] font-semibold uppercase tracking-wider text-white/20 absolute top-1 left-2">{role}</span>
-                        <div className="flex items-center justify-center gap-1 h-full pt-3">
-                          <AnimatePresence mode="popLayout">
-                            {athletesByRole[role].map(athlete => (
-                              <motion.button
+                  {/* Selected Athletes List */}
+                  {selectedAthletes.length > 0 && (
+                    <div className="space-y-2 mb-4">
+                      <p className="font-mono text-[11px] tracking-[0.02em] font-[500] text-[#c6c9ab] uppercase">
+                        Selected ({selectedAthletes.length})
+                      </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                        <AnimatePresence mode="popLayout">
+                          {selectedAthletes.map(athlete => {
+                            const roleLabel = ROLE_LABELS[athlete.role];
+                            return (
+                              <motion.div
                                 key={athlete.mint}
                                 layout
-                                initial={{ opacity: 0, scale: 0.8 }}
-                                animate={{ opacity: 1, scale: 1 }}
-                                exit={{ opacity: 0, scale: 0.8 }}
-                                transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
-                                onClick={() => removeAthlete(athlete.mint)}
-                                className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-white/15 hover:bg-negative/30 border border-white/10 flex items-center justify-center text-[10px] md:text-xs font-bold transition-colors cursor-pointer relative group"
-                                title={athlete.name}
+                                initial={{ opacity: 0, y: 8 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -8 }}
+                                transition={{ duration: 0.15 }}
+                                className="flex items-center justify-between p-2.5 bg-[#181b25] border border-[#454932] group hover:bg-[#1c1f2a] transition-colors"
                               >
-                                {athlete.name[0]}
-                                <span className="absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap bg-black/80 text-[10px] px-2 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                                  {athlete.name}
-                                </span>
-                              </motion.button>
-                            ))}
-                          </AnimatePresence>
-                          {Array.from({ length: Math.max(0, maxSlotsByRole[role] - athletesByRole[role].length) }).map((_, i) => (
-                            <div
-                              key={`empty-${role}-${i}`}
-                              className="w-8 h-8 md:w-10 md:h-10 rounded-full border border-dashed border-white/10 bg-white/[0.02]"
-                            />
-                          ))}
-                        </div>
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <div className={`w-7 h-7 rounded-full flex items-center justify-center font-heading text-[11px] font-[700] shrink-0 ${
+                                    ROLE_COLORS_MAP[roleLabel]?.split(' ')[0] || 'bg-white/10'
+                                  }`}>
+                                    {athlete.name[0]}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="font-heading text-[13px] font-[600] text-white truncate">{athlete.name}</p>
+                                    <span className={`inline-block font-mono text-[10px] tracking-[0.02em] font-[700] px-1.5 py-0.5 mt-0.5 ${ROLE_COLORS_MAP[roleLabel]}`}>
+                                      {roleLabel}
+                                    </span>
+                                  </div>
+                                </div>
+                                <button
+                                  onClick={() => removeAthlete(athlete.mint)}
+                                  className="w-6 h-6 rounded-full bg-white/5 hover:bg-negative/20 text-[#c6c9ab] hover:text-negative flex items-center justify-center transition-colors shrink-0 opacity-0 group-hover:opacity-100"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </motion.div>
+                            );
+                          })}
+                        </AnimatePresence>
                       </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Selected Athletes List */}
-                {selectedAthletes.length > 0 && (
-                  <div className="space-y-2">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                      Selected ({selectedAthletes.length})
-                    </p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      <AnimatePresence mode="popLayout">
-                        {selectedAthletes.map(athlete => (
-                          <motion.div
-                            key={athlete.mint}
-                            layout
-                            initial={{ opacity: 0, y: 8 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -8 }}
-                            transition={{ duration: 0.2 }}
-                            className="flex items-center justify-between p-2.5 rounded-lg surface-elevated group"
-                          >
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold shrink-0">
-                                {athlete.name[0]}
-                              </div>
-                              <div className="min-w-0">
-                                <p className="text-sm font-semibold truncate">{athlete.name}</p>
-                                <span className={`inline-block text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-full mt-0.5 ${ROLE_COLORS[ROLE_LABELS[athlete.role]]} text-white`}>
-                                  {ROLE_LABELS[athlete.role]}
-                                </span>
-                              </div>
-                            </div>
-                            <button
-                              onClick={() => removeAthlete(athlete.mint)}
-                              className="w-7 h-7 rounded-full bg-white/5 hover:bg-negative/20 text-muted-foreground hover:text-negative flex items-center justify-center transition-colors shrink-0"
-                              aria-label={`Remove ${athlete.name}`}
-                            >
-                              <X className="w-3.5 h-3.5" />
-                            </button>
-                          </motion.div>
-                        ))}
-                      </AnimatePresence>
                     </div>
-                  </div>
-                )}
+                  )}
 
-                {/* Empty State */}
-                {selectedAthletes.length === 0 && (
-                  <div className="py-10 text-center surface-elevated rounded-xl">
-                    <Users className="w-8 h-8 text-muted-foreground/40 mx-auto mb-3" />
-                    <p className="text-sm font-semibold mb-1">No athletes selected</p>
-                    <p className="text-xs text-muted-foreground">Select athletes from the pool to build your lineup</p>
-                  </div>
-                )}
+                  {/* Empty State */}
+                  {selectedAthletes.length === 0 && (
+                    <div className="py-8 text-center bg-[#181b25] border border-[#454932] mb-4">
+                      <Users className="w-8 h-8 text-[#c6c9ab] mx-auto mb-2" />
+                      <p className="font-heading text-[16px] font-[600] text-white mb-0.5">Build your lineup</p>
+                      <p className="font-sans text-[14px] leading-[20px] font-[400] text-[#c6c9ab]">Select athletes from the pool to fill each role</p>
+                    </div>
+                  )}
 
-                {/* Error State */}
-                {roleErrors.length > 0 && selectedAthletes.length > 0 && (
-                  <div className="p-3 rounded-lg bg-negative/10 border border-negative/20 text-negative text-xs">
-                    <strong className="text-xs">Lineup incomplete: </strong>
-                    {roleErrors.join(', ')}.
-                  </div>
-                )}
+                  {/* Role Errors */}
+                  {roleErrors.length > 0 && selectedAthletes.length > 0 && (
+                    <div className="p-3 bg-negative/10 border border-negative/20 font-mono text-[12px] text-negative flex items-start gap-2 mb-4">
+                      <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                      <span><strong>Lineup incomplete:</strong> {roleErrors.join(', ')}.</span>
+                    </div>
+                  )}
 
-                {/* Success signature display */}
-                {txSignature && (
-                  <div className="p-3 rounded-lg bg-positive/10 border border-positive/20 text-positive text-xs flex items-center justify-between">
-                    <span>Entry submitted successfully!</span>
-                    <a
-                      href={`https://solscan.io/tx/${txSignature}${process.env.NEXT_PUBLIC_CLUSTER === 'devnet' ? '?cluster=devnet' : ''}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1 hover:underline"
-                    >
-                      View <ExternalLink className="w-3 h-3" />
-                    </a>
-                  </div>
-                )}
+                  {/* Tx Success */}
+                  {txSignature && (
+                    <div className="p-3 bg-positive/10 border border-positive/20 font-mono text-[12px] text-positive flex items-center justify-between mb-4">
+                      <span className="flex items-center gap-1.5">
+                        <Check className="w-3.5 h-3.5" />
+                        Entry submitted successfully!
+                      </span>
+                      <a
+                        href={`https://solscan.io/tx/${txSignature}${process.env.NEXT_PUBLIC_CLUSTER === 'devnet' ? '?cluster=devnet' : ''}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 hover:underline"
+                      >
+                        View <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+                  )}
 
-                {/* Submit */}
-                <div className="flex flex-col gap-2">
+                  {/* Enter Contest Button */}
                   <Button
                     size="lg"
-                    className={`w-full h-12 text-base font-bold rounded-lg transition-all ${
+                    className={`w-full h-12 font-mono text-[13px] font-[700] transition-all uppercase tracking-wider ${
                       isValidLineup
-                        ? 'bg-positive hover:bg-positive/90 text-black'
-                        : 'bg-white/5 text-muted-foreground'
+                        ? 'bg-primary text-primary-foreground hover:opacity-90'
+                        : 'bg-[#181b25] text-[#c6c9ab] border border-[#454932] cursor-not-allowed'
                     }`}
                     onClick={() => setShowConfirm(true)}
                     disabled={!isValidLineup || submitting}
                   >
                     {submitting ? (
-                      <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Entering Contest...</>
+                      <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Entering Arena...</>
                     ) : (
-                      <>Enter Contest</>
+                      <><Zap className="w-4 h-4 mr-2" /> Enter Contest</>
                     )}
                   </Button>
                 </div>
               </div>
             </div>
-          </div>
 
-          {/* Right: Player Pool */}
-          <div className="lg:col-span-1">
-            <div className="surface-raised sticky top-24 max-h-[calc(100vh-120px)] flex flex-col">
-              <div className="p-4 border-b border-white/[0.06] shrink-0">
-                <h2 className="text-sm font-bold mb-3">Player Pool</h2>
-                <div className="relative mb-3">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-                  <Input
-                    placeholder="Search athletes..."
-                    className="pl-8 h-9 text-sm bg-white/5 border-white/10 focus-visible:ring-primary"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                  />
+            {/* Right: Player Pool */}
+            <div className="lg:sticky lg:top-24 lg:max-h-[calc(100vh-120px)] lg:flex lg:flex-col">
+              <div className="border border-[#454932] bg-[#1c1f2a] flex flex-col h-full">
+                <div className="p-4 border-b border-[#454932] shrink-0">
+                  <div className="flex items-center justify-between mb-3">
+                    <h2 className="font-heading text-[18px] font-[600] text-white">Athlete Pool</h2>
+                    <span className="font-mono text-[11px] tracking-[0.02em] font-[500] text-[#c6c9ab]">{availableAthletes.length} athletes</span>
+                  </div>
+                  <div className="relative mb-3">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#c6c9ab]" />
+                    <Input
+                      placeholder="Search athletes..."
+                      className="pl-9 h-9 font-mono text-[12px] bg-[#0a0e18] border-[#454932] focus-visible:border-primary/50 rounded-none"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(['all', 'GK', 'DEF', 'MID', 'FWD'] as const).map(role => (
+                      <button
+                        key={role}
+                        onClick={() => setRoleFilter(role)}
+                        className={`px-3 py-1 font-mono text-[11px] font-[700] tracking-[0.02em] transition-all uppercase ${
+                          roleFilter === role
+                            ? role === 'all'
+                              ? 'bg-primary text-primary-foreground'
+                              : `${ROLE_COLORS_MAP[role].split(' ')[0]} ${ROLE_COLORS_MAP[role].split(' ')[1]} border ${ROLE_COLORS_MAP[role].split(' ')[2]}`
+                            : 'bg-[#181b25] text-[#c6c9ab] border border-[#454932] hover:bg-[#1c1f2a]'
+                        }`}
+                      >
+                        {role === 'all' ? 'All' : role}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {(['all', 'GK', 'DEF', 'MID', 'FWD'] as const).map(role => (
-                    <button
-                      key={role}
-                      onClick={() => setRoleFilter(role)}
-                      className={`px-2.5 py-1 rounded-full text-[11px] font-semibold transition-colors ${
-                        roleFilter === role
-                          ? role === 'all'
-                            ? 'bg-white text-black'
-                            : `${ROLE_COLORS[role]} text-white`
-                          : 'bg-white/5 text-muted-foreground hover:bg-white/10'
-                      }`}
-                    >
-                      {role === 'all' ? 'All' : role}
-                    </button>
-                  ))}
-                </div>
-              </div>
 
-              <div className="overflow-y-auto flex-1 custom-scrollbar min-h-[300px]">
-                <div className="p-3 space-y-1.5">
-                  {availableAthletes.length === 0 && (
-                    <div className="text-center py-10 text-muted-foreground text-xs">
-                      Loading athletes...
-                    </div>
-                  )}
-                  {availableAthletes.length > 0 && filteredAthletes.length === 0 && (
-                    <div className="text-center py-10 text-muted-foreground text-xs">
-                      No athletes match your search
-                    </div>
-                  )}
-                  {filteredAthletes.length > 0 && (
-                    filteredAthletes.map(athlete => {
-                      const isSelected = selectedAthletes.some(a => a.mint === athlete.mint);
-                      return (
-                        <button
-                          key={athlete.mint}
-                          onClick={() => !isSelected && handleSelectAthlete(athlete)}
-                          disabled={isSelected}
-                          className={`w-full flex items-center justify-between p-2.5 rounded-lg text-left transition-all ${
-                            isSelected
-                              ? 'bg-positive/10 opacity-60 cursor-default'
-                              : 'surface-elevated hover:bg-white/10 hover:border-white/20 cursor-pointer'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-xs font-bold shrink-0">
-                              {athlete.name[0]}
+                <div className="overflow-y-auto flex-1 min-h-[400px] lg:min-h-0 custom-scrollbar">
+                  <div className="p-3 space-y-1">
+                    {availableAthletes.length === 0 && (
+                      <div className="text-center py-10 font-mono text-[12px] text-[#c6c9ab]">
+                        Loading athletes...
+                      </div>
+                    )}
+                    {availableAthletes.length > 0 && filteredAthletes.length === 0 && (
+                      <div className="text-center py-10 font-mono text-[12px] text-[#c6c9ab]">
+                        No athletes match your search
+                      </div>
+                    )}
+                    {filteredAthletes.length > 0 && (
+                      filteredAthletes.map(athlete => {
+                        const isSelected = selectedAthletes.some(a => a.mint === athlete.mint);
+                        const roleLabel = ROLE_LABELS[athlete.role];
+                        return (
+                          <button
+                            key={athlete.mint}
+                            onClick={() => !isSelected && handleSelectAthlete(athlete)}
+                            disabled={isSelected}
+                            className={`w-full flex items-center justify-between p-3 text-left transition-all ${
+                              isSelected
+                                ? 'bg-positive/5 border border-positive/20 opacity-70'
+                                : 'bg-[#181b25] border border-[#454932] hover:bg-[#1c1f2a] hover:border-white/20 cursor-pointer'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className={`w-9 h-9 rounded-full flex items-center justify-center font-heading text-[13px] font-[700] shrink-0 ${
+                                ROLE_COLORS_MAP[roleLabel]?.split(' ')[0] || 'bg-white/10'
+                              }`}>
+                                {athlete.name[0]}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="font-heading text-[14px] font-[600] text-white truncate max-w-[120px]">{athlete.name}</p>
+                                <div className="flex items-center gap-1.5 mt-0.5">
+                                  <span className={`font-mono text-[10px] tracking-[0.02em] font-[700] px-1.5 py-0.5 ${ROLE_COLORS_MAP[roleLabel]}`}>
+                                    {roleLabel}
+                                  </span>
+                                </div>
+                              </div>
                             </div>
-                            <div className="min-w-0">
-                              <p className="text-sm font-semibold truncate max-w-[120px]">{athlete.name}</p>
-                              <span className={`inline-block text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-full mt-0.5 ${ROLE_COLORS[ROLE_LABELS[athlete.role]]} text-white`}>
-                                {ROLE_LABELS[athlete.role]}
-                              </span>
-                            </div>
-                          </div>
-                          {isSelected ? (
-                            <Check className="w-4 h-4 text-positive" />
-                          ) : (
-                            <div className="w-7 h-7 rounded-full bg-white/5 flex items-center justify-center text-muted-foreground group-hover:bg-positive group-hover:text-black transition-colors">
-                              <Plus className="w-3.5 h-3.5" />
-                            </div>
-                          )}
-                        </button>
-                      );
-                    })
-                  )}
+                            {isSelected ? (
+                              <div className="w-7 h-7 rounded-full bg-positive/20 flex items-center justify-center">
+                                <Check className="w-3.5 h-3.5 text-positive" />
+                              </div>
+                            ) : (
+                              <div className="w-7 h-7 rounded-full bg-[#262a34] flex items-center justify-center text-[#c6c9ab] group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+                                <Plus className="w-3.5 h-3.5" />
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
                 </div>
-              </div>
 
-              <div className="p-3 border-t border-white/[0.06] shrink-0">
-                <p className="text-[10px] text-muted-foreground text-center">
-                  {availableAthletes.length} athletes available
-                </p>
+                <div className="p-3 border-t border-[#454932] shrink-0">
+                  <p className="font-mono text-[11px] tracking-[0.02em] text-[#c6c9ab] text-center">
+                    {filteredAthletes.length} of {availableAthletes.length} athletes
+                  </p>
+                </div>
               </div>
             </div>
           </div>
@@ -827,57 +833,153 @@ function ContestDetailContent() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
             onClick={() => !submitting && setShowConfirm(false)}
           >
             <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
               transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
               onClick={e => e.stopPropagation()}
-              className="surface-raised w-full max-w-md p-6"
+              className="w-full max-w-md border border-[#454932] bg-[#0f131d] overflow-hidden"
             >
-              <h3 className="text-lg font-bold mb-1">Confirm Entry</h3>
-              <p className="text-sm text-muted-foreground mb-5">
-                You&apos;re about to enter Contest #{contest.id} with the following lineup:
-              </p>
-
-              <div className="space-y-1.5 mb-5 max-h-60 overflow-y-auto custom-scrollbar">
-                {selectedAthletes.map(athlete => {
-                  const roleLabel = ROLE_LABELS[athlete.role];
-                  return (
-                    <div key={athlete.mint} className="flex items-center justify-between text-sm p-2 rounded-lg bg-white/5">
-                      <span className="font-medium">{athlete.name}</span>
-                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${ROLE_COLORS[roleLabel]} text-white`}>
-                        {roleLabel}
-                      </span>
-                    </div>
-                  );
-                })}
+              {/* Header */}
+              <div className="flex items-center gap-3 p-5 border-b border-[#454932]">
+                <button
+                  onClick={() => setShowConfirm(false)}
+                  className="w-8 h-8 bg-[#181b25] border border-[#454932] flex items-center justify-center hover:bg-[#1c1f2a] transition-colors"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <div>
+                  <h3 className="font-heading text-[18px] font-[600] text-white">Confirm Entry</h3>
+                  <p className="font-sans text-[13px] text-[#c6c9ab]">Review your lineup and transaction details</p>
+                </div>
               </div>
 
-              <div className="flex gap-3">
+              {/* Contest Info */}
+              <div className="px-5 py-4 border-b border-[#454932]">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-5 h-5 bg-[#181b25] border border-[#454932] flex items-center justify-center">
+                    <Zap className="w-3 h-3 text-primary" />
+                  </div>
+                  <span className="font-mono text-[11px] tracking-[0.02em] font-[500] text-[#c6c9ab] uppercase">Solana Network</span>
+                </div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="font-heading text-[16px] font-[600] text-white">Solana Open</span>
+                  <span className="font-mono text-[12px] font-[700] text-primary">$50k GTD Prize Pool</span>
+                </div>
+                <div className="flex items-center gap-4 font-mono text-[12px] text-[#c6c9ab]">
+                  <span className="flex items-center gap-1">
+                    <DollarSign className="w-3 h-3" />
+                    Entry Fee: 25.00 USDC
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    Starts in 45m
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Users className="w-3 h-3" />
+                    {contest.entryCount} / 2,000 Entries
+                  </span>
+                </div>
+              </div>
+
+              {/* Drafted Lineup */}
+              <div className="px-5 py-4 border-b border-[#454932]">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="font-mono text-[11px] tracking-[0.02em] font-[500] text-[#c6c9ab] uppercase">Drafted Lineup</h4>
+                </div>
+                <div className="space-y-1.5">
+                  {selectedAthletes.slice(0, 5).map(athlete => {
+                    const roleLabel = ROLE_LABELS[athlete.role];
+                    return (
+                      <div key={athlete.mint} className="flex items-center justify-between font-mono text-[13px] p-2 bg-[#181b25] border border-[#454932]">
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[10px] font-[700] w-6 text-center ${ROLE_COLORS_MAP[roleLabel]?.split(' ')[1] || 'text-white'}`}>
+                            {roleLabel}
+                          </span>
+                          <span className="font-heading text-[13px] font-[600] text-white">{athlete.name}</span>
+                        </div>
+                        <span className="font-mono text-[13px] font-[700] text-[#c6c9ab]">$0</span>
+                      </div>
+                    );
+                  })}
+                  {selectedAthletes.length > 5 && (
+                    <button className="w-full font-mono text-[12px] font-[700] text-primary text-center pt-1 hover:underline uppercase tracking-wider">
+                      View Full Lineup ({selectedAthletes.length - 5} more)
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Fee Summary */}
+              <div className="px-5 py-4">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between font-mono text-[13px]">
+                    <span className="text-[#c6c9ab]">Available Balance</span>
+                    <span className="font-[700] text-[#dfe2f0]">1,245.50 USDC</span>
+                  </div>
+                  <div className="flex items-center justify-between font-mono text-[13px]">
+                    <span className="text-[#c6c9ab]">Entry Fee</span>
+                    <span className="font-[700] text-negative">- 25.00 USDC</span>
+                  </div>
+                  <div className="flex items-center justify-between font-mono text-[13px]">
+                    <div className="flex items-center gap-1">
+                      <span className="text-[#c6c9ab]">Network Fee</span>
+                      <AlertCircle className="w-3 h-3 text-[#c6c9ab]/60" />
+                    </div>
+                    <span className="text-[#c6c9ab]">~0.000005 SOL</span>
+                  </div>
+                  <div className="pt-2 border-t border-[#454932] flex items-center justify-between font-mono text-[14px]">
+                    <span className="font-[700] text-white">Total Deduction</span>
+                    <span className="font-[700] text-primary">25.00 USDC</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="px-5 pb-5 space-y-2">
+                <Button
+                  className="w-full h-11 font-mono text-[13px] font-[700] bg-primary text-primary-foreground hover:opacity-90 transition-opacity uppercase tracking-wider"
+                  onClick={handleEnterContest}
+                  disabled={submitting}
+                >
+                  {submitting ? (
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Confirming...</>
+                  ) : (
+                    <><Zap className="w-4 h-4 mr-2" /> Confirm Entry</>
+                  )}
+                </Button>
                 <Button
                   variant="outline"
-                  className="flex-1 h-11 text-sm"
+                  className="w-full h-11 font-mono text-[13px] font-[700] border-[#454932] text-[#c6c9ab] hover:text-white hover:bg-[#1c1f2a] uppercase tracking-wider"
                   onClick={() => setShowConfirm(false)}
                   disabled={submitting}
                 >
                   Cancel
                 </Button>
-                <Button
-                  className="flex-1 h-11 text-sm font-bold bg-positive hover:bg-positive/90 text-black"
-                  onClick={handleEnterContest}
-                  disabled={submitting}
-                >
-                  {submitting ? (
-                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Submitting...</>
-                  ) : (
-                    'Confirm & Submit'
-                  )}
-                </Button>
               </div>
+
+              {/* Tx Status */}
+              {submitting && (
+                <div className="px-5 pb-5">
+                  <div className="p-3 bg-[#181b25] border border-[#454932]">
+                    <div className="flex items-center gap-2 font-mono text-[12px] mb-2">
+                      <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                      <span className="font-[700] text-[#dfe2f0]">Confirming Transaction...</span>
+                    </div>
+                    <p className="font-sans text-[12px] text-[#c6c9ab]">
+                      Awaiting confirmation on Solana mainnet.
+                    </p>
+                    <div className="flex items-center gap-1.5 mt-2 font-mono text-[11px] text-[#c6c9ab]">
+                      <Fingerprint className="w-3 h-3" />
+                      TxHash: <span className="font-mono">8f4k...9m2q</span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </motion.div>
           </motion.div>
         )}
@@ -891,10 +993,10 @@ export default dynamic(() => Promise.resolve(ContestDetailPage), { ssr: false })
 function ContestDetailPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-[#0f131d]">
         <div className="flex flex-col items-center gap-4">
           <div className="w-10 h-10 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-muted-foreground">Loading contest...</p>
+          <p className="font-sans text-[14px] text-[#c6c9ab]">Loading contest...</p>
         </div>
       </div>
     }>

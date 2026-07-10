@@ -3,6 +3,8 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
+import { useRevolvingTitle } from '@/hooks/useRevolvingTitle';
+import Image from 'next/image';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import {
@@ -10,7 +12,6 @@ import {
   TrendingUp,
   TrendingDown,
   ArrowUpRight,
-  ArrowDownRight,
   Wallet,
   Trophy,
   History,
@@ -21,8 +22,8 @@ import {
   PieChart,
   Receipt,
   Coins,
-  ChevronLeft,
 } from 'lucide-react';
+import { Sidebar, SidebarNavItem } from '@/components/layout/sidebar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -67,6 +68,12 @@ interface ContestEntry {
 export default function PortfolioPage() {
   const { connected, publicKey } = useWallet();
   const { setVisible } = useWalletModal();
+
+  useRevolvingTitle([
+    'Portfolio | DEXI',
+    'Your Holdings | DEXI',
+    'Manage Positions | DEXI',
+  ]);
   const [usdcBalance, setUsdcBalance] = useState<number>(0);
   const [holdings, setHoldings] = useState<TokenHolding[]>([]);
   const [entries, setEntries] = useState<ContestEntry[]>([]);
@@ -286,8 +293,9 @@ export default function PortfolioPage() {
       {/* Top Navigation */}
       <nav className="sticky top-0 z-50 w-full bg-surface border-b border-border">
         <div className="flex items-center justify-between h-16 px-6 max-w-[1440px] mx-auto w-full">
-          <Link href="/" className="text-[24px] font-[600] font-heading text-white tracking-tighter">
-            DEXI
+          <Link href="/" className="flex items-center gap-2">
+            <Image src="/DEXI.svg" alt="DEXI" width={28} height={28} className="shrink-0" />
+            <span className="text-[24px] font-[600] font-heading text-white tracking-tighter">DEXI</span>
           </Link>
 
           <div className="hidden md:flex gap-8 h-full items-center absolute left-1/2 -translate-x-1/2">
@@ -337,66 +345,33 @@ export default function PortfolioPage() {
       {/* Main Layout */}
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
-        <aside className={`hidden lg:flex flex-col bg-[#0a0e18] border-r border-border shrink-0 transition-all duration-300 ${sidebarCollapsed ? 'w-16' : 'w-64'}`}>
-          <div className={`flex items-center justify-between px-4 py-6 ${sidebarCollapsed ? 'justify-center' : 'px-6'}`}>
-            {!sidebarCollapsed && (
-              <>
-                <h2 className="font-heading text-[24px] font-[600] text-white tracking-tight">Portfolio</h2>
-              </>
-            )}
-            <button
-              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              className="p-2 rounded-lg text-[#c6c9ab] hover:text-white hover:bg-[#181b25] transition-all duration-200"
-            >
-              <ChevronLeft className={`w-5 h-5 transition-transform duration-300 ${sidebarCollapsed ? 'rotate-180' : ''}`} />
-            </button>
-          </div>
-
-          {!sidebarCollapsed && (
-            <div className="px-6 pb-2">
-              <p className="font-mono text-[12px] text-[#c6c9ab] tracking-[0.02em]">Your Assets & Activity</p>
-            </div>
-          )}
-
-          <nav className="flex-1 flex flex-col gap-1 px-3 overflow-y-auto">
-            <Link
-              href="/portfolio"
-              className={`flex items-center gap-3 px-4 py-3 rounded-lg text-white bg-[#262a34] border-r-2 border-[#d2f000] transition-all duration-200 font-mono text-[14px] tracking-[0.02em] ${sidebarCollapsed ? 'justify-center px-2' : ''}`}
-            >
-              <PieChart className="w-5 h-5 shrink-0" />
-              {!sidebarCollapsed && <span>Overview</span>}
-            </Link>
-            <Link
-              href="/portfolio?tab=tokens"
-              className={`flex items-center gap-3 px-4 py-3 rounded-lg text-[#c6c9ab] hover:bg-[#181b25] hover:text-white transition-all duration-200 font-mono text-[14px] tracking-[0.02em] ${sidebarCollapsed ? 'justify-center px-2' : ''}`}
-            >
-              <Coins className="w-5 h-5 shrink-0" />
-              {!sidebarCollapsed && <span>My Tokens</span>}
-            </Link>
-            <Link
-              href="/contests"
-              className={`flex items-center gap-3 px-4 py-3 rounded-lg text-[#c6c9ab] hover:bg-[#181b25] hover:text-white transition-all duration-200 font-mono text-[14px] tracking-[0.02em] ${sidebarCollapsed ? 'justify-center px-2' : ''}`}
-            >
-              <Trophy className="w-5 h-5 shrink-0" />
-              {!sidebarCollapsed && <span>My Contests</span>}
-            </Link>
-            <Link
-              href="/portfolio?tab=history"
-              className={`flex items-center gap-3 px-4 py-3 rounded-lg text-[#c6c9ab] hover:bg-[#181b25] hover:text-white transition-all duration-200 font-mono text-[14px] tracking-[0.02em] ${sidebarCollapsed ? 'justify-center px-2' : ''}`}
-            >
-              <Receipt className="w-5 h-5 shrink-0" />
-              {!sidebarCollapsed && <span>History</span>}
-            </Link>
+        <Sidebar
+          collapsed={sidebarCollapsed}
+          onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
+          breakpoint="lg"
+          expandedWidth="w-64"
+          header={
+            <>
+              <h2 className="text-[24px] font-[600] font-heading text-white tracking-tighter">Portfolio</h2>
+              <p className="font-mono text-[11px] tracking-[0.02em] text-[#c6c9ab]">Your Assets &amp; Activity</p>
+            </>
+          }
+        >
+          <nav className="flex-1 flex flex-col px-2 space-y-1 overflow-y-auto">
+            <SidebarNavItem href="/portfolio" icon={PieChart} active collapsed={sidebarCollapsed}>Overview</SidebarNavItem>
+            <SidebarNavItem href="/portfolio?tab=tokens" icon={Coins} collapsed={sidebarCollapsed}>My Tokens</SidebarNavItem>
+            <SidebarNavItem href="/contests" icon={Trophy} collapsed={sidebarCollapsed}>My Contests</SidebarNavItem>
+            <SidebarNavItem href="/portfolio?tab=history" icon={Receipt} collapsed={sidebarCollapsed}>History</SidebarNavItem>
           </nav>
 
-          <div className={`px-6 pb-8 mt-auto ${sidebarCollapsed ? 'px-2' : ''}`}>
+          <div className={`pb-8 mt-auto ${sidebarCollapsed ? 'px-2' : 'px-6'}`}>
             <Link href="/contests">
-              <Button className={`bg-[#d2f000] text-[#191e00] font-mono text-[14px] font-[700] py-3 h-auto rounded-lg hover:opacity-90 transition-opacity ${sidebarCollapsed ? 'w-full px-2' : 'w-full'}`}>
+              <div className={`bg-primary text-[#191e00] font-mono text-[13px] font-bold py-2 text-center hover:bg-primary-fixed-dim transition-colors ${sidebarCollapsed ? 'px-0' : 'w-full'}`}>
                 {!sidebarCollapsed && 'Enter Contest'}
-              </Button>
+              </div>
             </Link>
           </div>
-        </aside>
+        </Sidebar>
 
         {/* Main Content */}
         <main className="flex-1 p-6 overflow-y-auto max-w-[1440px] mx-auto w-full">
