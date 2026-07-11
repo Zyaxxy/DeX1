@@ -23,7 +23,7 @@ export async function findContestPda(
   config: { programAddress?: Address | undefined } = {},
 ): Promise<ProgramDerivedAddress> {
   const {
-    programAddress = "5RjcrhEhspU8YLLjWN7SJ3TRJkoLZW3LnkrCWCNgTDb3" as Address<"5RjcrhEhspU8YLLjWN7SJ3TRJkoLZW3LnkrCWCNgTDb3">,
+    programAddress = "DVhT84igqfyaKaaFDfmjdZGUTNwyoCPQetmVdV5NdTbU" as Address<"DVhT84igqfyaKaaFDfmjdZGUTNwyoCPQetmVdV5NdTbU">,
   } = config;
   return await getProgramDerivedAddress({
     programAddress,

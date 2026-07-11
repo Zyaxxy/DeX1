@@ -20,7 +20,7 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 
-import { connection, ROLE_LABELS, ROLE_COLORS, formatTokenAmount, formatUSDC, rpc } from '@/solana/client';
+import { getConnection, ROLE_LABELS, ROLE_COLORS, formatTokenAmount, formatUSDC, getRpc } from '@/solana/client';
 import { toast } from 'sonner';
 import { decodeAthletePool, findPoolPda } from '@dexi/sdk';
 import { usePoolTrades } from '@/hooks/usePoolTrades';
@@ -35,12 +35,13 @@ interface PoolInfo {
   poolUsdc?: bigint;
   poolTokens?: bigint;
   price?: number;
+  image?: string;
 }
 
 function PoolDetailContent() {
   const params = useParams();
   const mintParam = params?.mint as string;
-  const { connected, publicKey, signTransaction } = useWallet();
+  const { connected, publicKey, sendTransaction } = useWallet();
   const { setVisible } = useWalletModal();
   const [pool, setPool] = useState<PoolInfo | null>(null);
 
@@ -81,7 +82,7 @@ function PoolDetailContent() {
     if (!mintParam) return;
     try {
       const [poolPda] = await findPoolPda({ mint: mintParam as any });
-      const response = await rpc.getAccountInfo(poolPda, { encoding: 'base64', commitment: 'confirmed' }).send();
+      const response = await getRpc().getAccountInfo(poolPda, { encoding: 'base64', commitment: 'confirmed' }).send();
 
       if (!response || !response.value) return;
 
@@ -96,7 +97,7 @@ function PoolDetailContent() {
       const { findConfigPda, decodeAdminConfig } = await import('@dexi/sdk');
 
       const [configPda] = await findConfigPda();
-      const configInfo = await connection.getAccountInfo(new PublicKey(configPda));
+      const configInfo = await getConnection().getAccountInfo(new PublicKey(configPda));
       if (!configInfo) throw new Error("Config not found");
       const configData = decodeAdminConfig({
         address: configPda,
@@ -114,7 +115,7 @@ function PoolDetailContent() {
       setPoolUsdcVault(poolUsdcVault.toBase58());
       setPoolTokenVault(poolTokenVault.toBase58());
 
-      const accountInfos = await connection.getMultipleAccountsInfo([poolTokenVault, poolUsdcVault]);
+      const accountInfos = await getConnection().getMultipleAccountsInfo([poolTokenVault, poolUsdcVault]);
 
       let poolTokens = BigInt(0);
       let poolUsdc = BigInt(0);
@@ -166,7 +167,7 @@ function PoolDetailContent() {
         const { findConfigPda, decodeAdminConfig } = await import('@dexi/sdk');
 
         const [configPda] = await findConfigPda();
-        const configInfo = await connection.getAccountInfo(new PublicKey(configPda));
+        const configInfo = await getConnection().getAccountInfo(new PublicKey(configPda));
         if (!configInfo) throw new Error("Config not found");
         const configData = decodeAdminConfig({
           address: configPda,
@@ -181,7 +182,7 @@ function PoolDetailContent() {
         const userUsdcAta = getAssociatedTokenAddressSync(usdcMintKey, userKey, true);
         const userTokenAta = getAssociatedTokenAddressSync(poolMintKey, userKey, true);
 
-        const accountInfos = await connection.getMultipleAccountsInfo([userUsdcAta, userTokenAta]);
+        const accountInfos = await getConnection().getMultipleAccountsInfo([userUsdcAta, userTokenAta]);
 
         let usdcBal = BigInt(0);
         let tokenBal = BigInt(0);
@@ -212,7 +213,7 @@ function PoolDetailContent() {
   });
 
   const handleBuy = async () => {
-    if (!connected || !publicKey || !signTransaction || !pool) {
+    if (!connected || !publicKey || !sendTransaction || !pool) {
       toast.error('Please connect your wallet');
       return;
     }
@@ -220,6 +221,11 @@ function PoolDetailContent() {
     const amount = parseFloat(buyAmount);
     if (isNaN(amount) || amount <= 0) {
       toast.error('Please enter a valid amount');
+      return;
+    }
+
+    if (BigInt(Math.floor(amount * 1_000_000)) > usdcBalance) {
+      toast.error('Insufficient USDC balance');
       return;
     }
 
@@ -231,7 +237,7 @@ function PoolDetailContent() {
 
       const [configPda] = await findConfigPda();
       const userKey = new PublicKey(publicKey.toString());
-      const configInfo = await connection.getAccountInfo(new PublicKey(configPda));
+      const configInfo = await getConnection().getAccountInfo(new PublicKey(configPda));
       if (!configInfo) throw new Error("Config not found");
       const { decodeAdminConfig } = await import('@dexi/sdk');
       const configData = decodeAdminConfig({
@@ -271,14 +277,14 @@ function PoolDetailContent() {
 
       const instructions: any[] = [];
 
-      const userUsdcAtaInfo = await connection.getAccountInfo(userUsdcAta);
+      const userUsdcAtaInfo = await getConnection().getAccountInfo(userUsdcAta);
       if (!userUsdcAtaInfo) {
         instructions.push(
           createAssociatedTokenAccountInstruction(userKey, userUsdcAta, userKey, usdcMintKey)
         );
       }
 
-      const userTokenAtaInfo = await connection.getAccountInfo(userTokenAta);
+      const userTokenAtaInfo = await getConnection().getAccountInfo(userTokenAta);
       if (!userTokenAtaInfo) {
         instructions.push(
           createAssociatedTokenAccountInstruction(userKey, userTokenAta, userKey, poolMintKey)
@@ -296,7 +302,7 @@ function PoolDetailContent() {
       });
       instructions.push(instruction);
 
-      const { blockhash } = await connection.getLatestBlockhash();
+      const { blockhash } = await getConnection().getLatestBlockhash();
       const messageV0 = new TransactionMessage({
         payerKey: userKey,
         recentBlockhash: blockhash,
@@ -304,9 +310,24 @@ function PoolDetailContent() {
       }).compileToV0Message();
 
       const transaction = new VersionedTransaction(messageV0);
-      const signedTransaction = await signTransaction(transaction);
-      const signature = await connection.sendRawTransaction(signedTransaction.serialize());
-      await connection.confirmTransaction(signature, 'confirmed');
+
+      try {
+        const simResult = await getConnection().simulateTransaction(transaction, {
+          sigVerify: false,
+        });
+        if (simResult.value.err) {
+          console.error('Simulation error:', simResult.value.logs);
+          throw new Error(`Simulation failed: ${JSON.stringify(simResult.value.err)}`);
+        }
+      } catch (simError) {
+        console.error('Simulation failed:', simError);
+        toast.error('Transaction would fail. Check console for details.');
+        setLoading(false);
+        return;
+      }
+
+      const signature = await sendTransaction(transaction, getConnection());
+      await getConnection().confirmTransaction(signature, 'confirmed');
 
       toast.success(`Bought ${amount} USDC worth of ${pool.name}!`);
       setBuyAmount('');
@@ -321,7 +342,7 @@ function PoolDetailContent() {
   };
 
   const handleSell = async () => {
-    if (!connected || !publicKey || !signTransaction || !pool) {
+    if (!connected || !publicKey || !sendTransaction || !pool) {
       toast.error('Please connect your wallet');
       return;
     }
@@ -345,7 +366,7 @@ function PoolDetailContent() {
 
       const [configPda] = await findConfigPda();
       const userKey = new PublicKey(publicKey.toString());
-      const configInfo = await connection.getAccountInfo(new PublicKey(configPda));
+      const configInfo = await getConnection().getAccountInfo(new PublicKey(configPda));
       if (!configInfo) throw new Error("Config not found");
       const { decodeAdminConfig } = await import('@dexi/sdk');
       const configData = decodeAdminConfig({
@@ -385,14 +406,14 @@ function PoolDetailContent() {
 
       const instructions: any[] = [];
 
-      const userUsdcAtaInfo = await connection.getAccountInfo(userUsdcAta);
+      const userUsdcAtaInfo = await getConnection().getAccountInfo(userUsdcAta);
       if (!userUsdcAtaInfo) {
         instructions.push(
           createAssociatedTokenAccountInstruction(userKey, userUsdcAta, userKey, usdcMintKey)
         );
       }
 
-      const userTokenAtaInfo = await connection.getAccountInfo(userTokenAta);
+      const userTokenAtaInfo = await getConnection().getAccountInfo(userTokenAta);
       if (!userTokenAtaInfo) {
         instructions.push(
           createAssociatedTokenAccountInstruction(userKey, userTokenAta, userKey, poolMintKey)
@@ -410,7 +431,7 @@ function PoolDetailContent() {
       });
       instructions.push(instruction);
 
-      const { blockhash } = await connection.getLatestBlockhash();
+      const { blockhash } = await getConnection().getLatestBlockhash();
       const messageV0 = new TransactionMessage({
         payerKey: userKey,
         recentBlockhash: blockhash,
@@ -418,9 +439,24 @@ function PoolDetailContent() {
       }).compileToV0Message();
 
       const transaction = new VersionedTransaction(messageV0);
-      const signedTransaction = await signTransaction(transaction);
-      const signature = await connection.sendRawTransaction(signedTransaction.serialize());
-      await connection.confirmTransaction(signature, 'confirmed');
+
+      try {
+        const simResult = await getConnection().simulateTransaction(transaction, {
+          sigVerify: false,
+        });
+        if (simResult.value.err) {
+          console.error('Simulation error:', simResult.value.logs);
+          throw new Error(`Simulation failed: ${JSON.stringify(simResult.value.err)}`);
+        }
+      } catch (simError) {
+        console.error('Simulation failed:', simError);
+        toast.error('Transaction would fail. Check console for details.');
+        setLoading(false);
+        return;
+      }
+
+      const signature = await sendTransaction(transaction, getConnection());
+      await getConnection().confirmTransaction(signature, 'confirmed');
 
       toast.success(`Sold ${amount} ${pool.name}!`);
       setSellAmount('');
@@ -508,9 +544,13 @@ function PoolDetailContent() {
         {/* Header */}
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-8 bg-white/[0.02] border border-white/[0.06] rounded-xl p-6">
           <div className="flex items-center gap-5">
-            <div className="w-16 h-16 rounded-full bg-white/[0.06] flex items-center justify-center">
-              <span className="text-2xl font-black text-white">{pool.name[0]}</span>
-            </div>
+            {pool.image ? (
+              <img src={pool.image} alt={pool.name} className="w-16 h-16 rounded-full object-cover border border-white/[0.12]" />
+            ) : (
+              <div className="w-16 h-16 rounded-full bg-white/[0.06] flex items-center justify-center">
+                <span className="text-2xl font-black text-white">{pool.name[0]}</span>
+              </div>
+            )}
             <div>
               <div className="flex items-center gap-3 mb-1.5">
                 <h1 className="text-2xl md:text-3xl font-black text-white tracking-tight">{pool.name}</h1>
@@ -707,9 +747,13 @@ function PoolDetailContent() {
                     </div>
 
                     <div className="relative">
-                      <div className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-white/[0.06] flex items-center justify-center font-bold text-[10px] text-white">
-                        {pool.name[0]}
-                      </div>
+                      {pool.image ? (
+                        <img src={pool.image} alt={pool.name} className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full object-cover" />
+                      ) : (
+                        <div className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-white/[0.06] flex items-center justify-center font-bold text-[10px] text-white">
+                          {pool.name[0]}
+                        </div>
+                      )}
                       <div className="pl-10 h-12 bg-white/[0.03] border border-white/[0.06] rounded-lg flex items-center text-lg font-mono text-white">
                         {buyAmount && parseFloat(buyAmount) > 0
                           ? calculateBuyOutput(parseFloat(buyAmount)).toFixed(4)
@@ -761,9 +805,13 @@ function PoolDetailContent() {
                     </div>
 
                     <div className="relative">
-                      <div className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-white/[0.06] flex items-center justify-center font-bold text-[10px] text-white">
-                        {pool.name[0]}
-                      </div>
+                      {pool.image ? (
+                        <img src={pool.image} alt={pool.name} className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full object-cover" />
+                      ) : (
+                        <div className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-white/[0.06] flex items-center justify-center font-bold text-[10px] text-white">
+                          {pool.name[0]}
+                        </div>
+                      )}
                       <Input
                         type="number"
                         placeholder="0.00"

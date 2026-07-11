@@ -67,6 +67,12 @@ pub struct Contest {
     pub processed_mint_count: u8,
     /// The Address Lookup Table containing all shared contest accounts (mints, pools, vaults).
     pub address_lookup_table: Pubkey,
+    /// Display name e.g. "Germany vs France - QF"
+    #[max_len(MAX_CONTEST_NAME_LEN)]
+    pub name: String,
+    /// TxLINE fixture ID for match-based scoring
+    #[max_len(MAX_FIXTURE_ID_LEN)]
+    pub fixture_id: String,
 }
 
 /// A single user's lineup entry for a contest.

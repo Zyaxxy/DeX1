@@ -49,6 +49,8 @@ impl<'info> CreateContest<'info> {
         prize_split: Vec<u16>,
         player_mints: Vec<Pubkey>,
         address_lookup_table: Pubkey,
+        name: String,
+        fixture_id: String,
         bumps: &CreateContestBumps,
         remaining_accounts: &'info [AccountInfo<'info>],
     ) -> Result<()> {
@@ -119,6 +121,8 @@ impl<'info> CreateContest<'info> {
             total_mint_count,
             processed_mint_count: 0,
             address_lookup_table,
+            name,
+            fixture_id,
         });
 
         Ok(())

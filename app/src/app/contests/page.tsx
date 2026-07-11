@@ -16,9 +16,9 @@ import Navbar from '@/components/layout/navbar';
 import Footer from '@/components/layout/footer';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { rpc, PROGRAM_ID, CONTEST_STATUS_LABELS, formatUSDC, formatTimestamp } from '@/solana/client';
-import { decodeContest, CONTEST_DISCRIMINATOR, ContestStatus } from '@dexi/sdk';
-import { getBase58Decoder } from '@solana/kit';
+import { getRpc, PROGRAM_ID, CONTEST_STATUS_LABELS, formatUSDC, formatTimestamp } from '@/solana/client';
+import { decodeContest, ContestStatus } from '@dexi/sdk';
+
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 
 interface ContestSummary {
@@ -29,13 +29,9 @@ interface ContestSummary {
   prizePool: bigint;
   winnerCount: number;
   address: string;
+  name: string;
+  fixtureId: string;
 }
-
-const LEAGUE_STYLES: Record<string, { label: string; icon: string; gradient: string }> = {
-  NBA: { label: 'NBA', icon: '🏀', gradient: 'from-amber-500/20 to-orange-600/10' },
-  NFL: { label: 'NFL', icon: '🏈', gradient: 'from-green-500/20 to-emerald-600/10' },
-  MLB: { label: 'MLB', icon: '⚾', gradient: 'from-red-500/20 to-rose-600/10' },
-};
 
 function formatCountdown(startTime: number): string {
   const now = Math.floor(Date.now() / 1000);
@@ -77,44 +73,57 @@ function ContestsPage() {
   ]);
 
   usePageMeta({
-    title: 'Contests | DEXI',
-    description: 'Enter fantasy sports contests, draft athlete lineups, and compete for USDC prizes on Solana.',
-    ogTitle: 'Contests — DEXI',
-    ogDescription: 'Enter fantasy sports contests on Solana.',
+    title: 'World Cup Contests | DEXI',
+    description: 'Enter FIFA World Cup 2026 fantasy contests, draft your lineup, and compete for USDC prizes.',
+    ogTitle: 'World Cup Contests — DEXI',
+    ogDescription: 'FIFA World Cup 2026 fantasy contests on Solana.',
   });
-  const [leagueFilter, setLeagueFilter] = useState('all');
-  const [typeFilter, setTypeFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     async function fetchContests() {
       try {
-        const response = await rpc.getProgramAccounts(PROGRAM_ID.toBase58() as any, {
+        const response = await getRpc().getProgramAccounts(PROGRAM_ID.toBase58() as any, {
           encoding: 'base64',
-          filters: [{ memcmp: { offset: BigInt(0), encoding: 'base58', bytes: getBase58Decoder().decode(CONTEST_DISCRIMINATOR) as any } }]
         }).send();
 
-        setContests(response.map(account => {
-          const decoded = decodeContest({
-            address: account.pubkey,
-            data: new Uint8Array(Buffer.from(account.account.data[0], account.account.data[1] as any)),
-            exists: true,
-          } as any).data;
+        const CONTEST_DISCRIMINATOR_BYTES = [216, 26, 88, 18, 251, 80, 201, 96];
+        
+        const validContests = [];
+        for (const account of response) {
+          try {
+            // Get the raw base64 data
+            const rawData = account.account.data[0];
+            // Decode base64 to binary
+            const binaryData = Uint8Array.from(atob(rawData), c => c.charCodeAt(0));
+            // Check first 8 bytes match discriminator
+            const matches = CONTEST_DISCRIMINATOR_BYTES.every((b, i) => binaryData[i] === b);
+            if (!matches) continue;
+            
+            const decoded = decodeContest({
+              address: account.pubkey,
+              data: new Uint8Array(Buffer.from(account.account.data[0], account.account.data[1] as any)),
+              exists: true,
+            } as any).data;
 
-          let status = 0;
-          if (decoded.status === ContestStatus.Locked) status = 1;
-          else if (decoded.status === ContestStatus.Settled) status = 2;
+            const statusNum = typeof decoded.status === 'number' ? decoded.status : 0;
 
-          return {
-            id: Number(decoded.id),
-            startTime: Number(decoded.startTime),
-            status,
-            entryCount: Number(decoded.entryCount),
-            prizePool: decoded.prizePool,
-            winnerCount: decoded.winnerCount,
-            address: account.pubkey,
-          };
-        }).sort((a, b) => b.id - a.id));
+            validContests.push({
+              id: Number(decoded.id),
+              startTime: Number(decoded.startTime),
+              status: statusNum,
+              entryCount: Number(decoded.entryCount),
+              prizePool: decoded.prizePool,
+              winnerCount: decoded.winnerCount,
+              address: account.pubkey,
+              name: decoded.name || `Match #${decoded.id}`,
+              fixtureId: decoded.fixtureId || '',
+            });
+          } catch (e) {
+            console.warn("Skipping bad contest account:", account.pubkey, e);
+          }
+        }
+        setContests(validContests.sort((a, b) => b.id - a.id));
       } catch (err) {
         console.error("Failed to fetch contests:", err);
       } finally {
@@ -124,9 +133,12 @@ function ContestsPage() {
     fetchContests();
   }, []);
 
-  const openContests = useMemo(() => contests.filter(c => c.status === 0), [contests]);
-  const otherContests = useMemo(() => contests.filter(c => c.status !== 0), [contests]);
-
+  const filteredContests = useMemo(() =>
+    contests.filter(c => String(c.name).toLowerCase().includes(searchQuery.toLowerCase())),
+    [contests, searchQuery]
+  );
+  const openContests = useMemo(() => filteredContests.filter(c => c.status === 0), [filteredContests]);
+  const otherContests = useMemo(() => filteredContests.filter(c => c.status !== 0), [filteredContests]);
   const featuredContests = useMemo(() => openContests.slice(0, 2), [openContests]);
 
   if (loading) {
@@ -150,20 +162,20 @@ function ContestsPage() {
       <main className="flex-1">
         {/* Hero Header */}
         <div className="relative overflow-hidden border-b border-[#454932]">
-          <div className="absolute inset-0 bg-gradient-to-b from-primary/5 via-transparent to-transparent pointer-events-none" />
+          <div className="absolute inset-0 bg-gradient-to-b from-[#1a3a2a]/30 via-transparent to-transparent pointer-events-none" />
           <div className="w-full max-w-[1440px] mx-auto px-6 py-10 md:py-14">
             <div className="flex items-center justify-between">
               <div>
                 <div className="flex items-center gap-4 mb-3">
                   <div className="w-10 h-10 bg-[#1c1f2a] border border-[#454932] flex items-center justify-center">
-                    <Swords className="w-5 h-5 text-primary" />
+                    <Trophy className="w-5 h-5 text-primary" />
                   </div>
                   <h1 className="font-heading text-[clamp(1.8rem,3.5vw,2.5rem)] font-[700] text-white leading-[1.1] tracking-[-0.02em]">
-                    The Arena
+                    World Cup Contests
                   </h1>
                 </div>
                 <p className="font-sans text-[16px] leading-[24px] font-[400] text-[#c6c9ab] max-w-lg">
-                  Build lineups, enter contests, and compete for USDC prizes settled instantly on Solana.
+                  FIFA World Cup 2026 — Draft your lineup from real match players and compete for USDC prizes.
                 </p>
               </div>
               {!connected && (
@@ -194,73 +206,56 @@ function ContestsPage() {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                {featuredContests.map((contest, i) => {
-                  const league = i % 2 === 0 ? 'NBA' : 'NFL';
-                  const style = LEAGUE_STYLES[league];
-                  const entryType = i % 2 === 0 ? 'Multi-Entry (Max 5)' : 'Single Entry';
-                  const maxEntries = i % 2 === 0 ? 2500 : 1000;
-                  const entryFee = i % 2 === 0 ? 25 : 100;
-                  return (
-                    <motion.button
-                      key={contest.id}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: i * 0.1, ease: [0.23, 1, 0.32, 1] }}
-                      onClick={() => router.push(`/contest/${contest.id}`)}
-                      className="relative group text-left w-full overflow-hidden border border-[#454932] bg-[#1c1f2a] hover:border-primary/30 transition-all duration-300"
-                    >
-                      <div className={`absolute inset-0 bg-gradient-to-br ${style.gradient} opacity-60 group-hover:opacity-80 transition-opacity pointer-events-none`} />
+                {featuredContests.map((contest, i) => (
+                  <motion.button
+                    key={contest.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.1, ease: [0.23, 1, 0.32, 1] }}
+                    onClick={() => router.push(`/contest/${contest.id}`)}
+                    className="relative group text-left w-full overflow-hidden border border-[#454932] bg-[#1c1f2a] hover:border-primary/30 transition-all duration-300"
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 to-primary/5 opacity-60 group-hover:opacity-80 transition-opacity pointer-events-none" />
 
-                      <div className="relative p-6">
-                        <div className="flex items-start justify-between mb-4">
-                          <div className="flex items-center gap-3">
-                            <span className="text-2xl">{style.icon}</span>
-                            <div>
-                              <p className="font-mono text-[11px] tracking-[0.02em] font-[500] text-[#c6c9ab]">{style.label}</p>
-                              <p className="font-heading text-[20px] font-[600] text-white leading-[1.2]">Contest #{contest.id}</p>
-                            </div>
+                    <div className="relative p-6">
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                          <span className="text-2xl">⚽</span>
+                          <div>
+                            <p className="font-mono text-[11px] tracking-[0.02em] font-[500] text-[#c6c9ab]">FIFA WC 2026</p>
+                            <p className="font-heading text-[20px] font-[600] text-white leading-[1.2]">{contest.name}</p>
                           </div>
-                          <ContestStatusBadge status={contest.status} />
                         </div>
-
-                        <div className="flex items-center gap-2 mb-4">
-                          <span className="font-mono text-[12px] font-[500] text-[#c6c9ab] bg-[#181b25] border border-[#454932] px-2 py-0.5">
-                            Entry ${entryFee}
-                          </span>
-                          <span className="font-heading text-[16px] font-[700] text-primary">${formatUSDC(contest.prizePool)} GTD</span>
-                        </div>
-
-                        <div className="flex items-center gap-5 font-mono text-[13px] text-[#c6c9ab] mb-4">
-                          <span className="flex items-center gap-1.5">
-                            <Users className="w-3.5 h-3.5" />
-                            {contest.entryCount} / {maxEntries}
-                          </span>
-                          <span className="flex items-center gap-1.5">
-                            <Swords className="w-3.5 h-3.5" />
-                            {entryType}
-                          </span>
-                        </div>
-
-                        <div className="w-full h-1 bg-[#262a34] mb-4">
-                          <div
-                            className="h-full bg-primary/60 transition-all duration-1000"
-                            style={{ width: `${Math.min(100, (contest.entryCount / maxEntries) * 100)}%` }}
-                          />
-                        </div>
-
-                        <div className="flex items-center justify-between">
-                          <span className="inline-flex items-center gap-1.5 font-mono text-[14px] font-[700] text-[#dfe2f0]">
-                            <Timer className="w-3.5 h-3.5 text-primary" />
-                            {formatCountdown(contest.startTime)}
-                          </span>
-                          <span className="inline-flex items-center gap-1.5 font-mono text-[13px] font-[700] text-primary group-hover:gap-2 transition-all uppercase tracking-wider">
-                            Draft Lineup <ChevronRight className="w-3.5 h-3.5" />
-                          </span>
-                        </div>
+                        <ContestStatusBadge status={contest.status} />
                       </div>
-                    </motion.button>
-                  );
-                })}
+
+                      <div className="flex items-center gap-2 mb-4">
+                        <span className="font-heading text-[16px] font-[700] text-primary">${formatUSDC(contest.prizePool)} Prize Pool</span>
+                      </div>
+
+                      <div className="flex items-center gap-5 font-mono text-[13px] text-[#c6c9ab] mb-4">
+                        <span className="flex items-center gap-1.5">
+                          <Users className="w-3.5 h-3.5" />
+                          {contest.entryCount} entries
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          <Trophy className="w-3.5 h-3.5" />
+                          Top {contest.winnerCount} paid
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <span className="inline-flex items-center gap-1.5 font-mono text-[14px] font-[700] text-[#dfe2f0]">
+                          <Timer className="w-3.5 h-3.5 text-primary" />
+                          {formatCountdown(contest.startTime)}
+                        </span>
+                        <span className="inline-flex items-center gap-1.5 font-mono text-[13px] font-[700] text-primary group-hover:gap-2 transition-all uppercase tracking-wider">
+                          Draft Lineup <ChevronRight className="w-3.5 h-3.5" />
+                        </span>
+                      </div>
+                    </div>
+                  </motion.button>
+                ))}
               </div>
             </div>
           )}
@@ -269,34 +264,11 @@ function ContestsPage() {
           <div>
             {/* Filters */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-              <div className="flex items-center gap-2 flex-wrap">
-                {['all', 'NBA', 'NFL', 'MLB'].map(league => (
-                  <button
-                    key={league}
-                    onClick={() => setLeagueFilter(league)}
-                    className={`px-3.5 py-1.5 font-mono text-[12px] font-[700] tracking-[0.02em] transition-all uppercase ${
-                      leagueFilter === league
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-[#181b25] text-[#c6c9ab] hover:bg-[#1c1f2a] border border-[#454932]'
-                    }`}
-                  >
-                    {league === 'all' ? 'All' : league}
-                  </button>
-                ))}
-                <div className="w-px h-5 bg-[#454932] mx-1" />
-                {['all', 'Guaranteed', 'H2H', 'Multiplier'].map(type => (
-                  <button
-                    key={type}
-                    onClick={() => setTypeFilter(type === 'all' ? 'all' : type.toLowerCase())}
-                    className={`px-3 py-1 font-mono text-[11px] font-[700] tracking-[0.02em] transition-all uppercase ${
-                      typeFilter === (type === 'all' ? 'all' : type.toLowerCase())
-                        ? 'bg-[#31353f] text-white border border-[#454932]'
-                        : 'text-[#c6c9ab] hover:text-white'
-                    }`}
-                  >
-                    {type}
-                  </button>
-                ))}
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 bg-[#181b25] border border-[#454932] px-3 py-1">
+                  <Trophy className="w-4 h-4 text-primary" />
+                  <span className="font-mono text-[12px] font-[700] text-white tracking-wider uppercase">FIFA World Cup 2026</span>
+                </div>
               </div>
 
               <div className="flex items-center gap-3">
@@ -304,17 +276,12 @@ function ContestsPage() {
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#c6c9ab]" />
                   <input
                     type="text"
-                    placeholder="Search contests..."
+                    placeholder="Search matches..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="w-48 h-9 pl-9 pr-3 font-mono text-[12px] bg-[#0a0e18] border border-[#454932] text-[#dfe2f0] placeholder:text-[#c6c9ab] focus:outline-none focus:border-primary/50 transition-colors"
                   />
                 </div>
-                <button className="inline-flex items-center gap-1.5 px-3 h-9 font-mono text-[11px] font-[700] tracking-[0.02em] text-[#c6c9ab] bg-[#181b25] border border-[#454932] hover:bg-[#1c1f2a] transition-colors uppercase">
-                  <Filter className="w-3.5 h-3.5" />
-                  Sort by Time
-                  <ChevronDown className="w-3 h-3" />
-                </button>
               </div>
             </div>
 
@@ -331,58 +298,47 @@ function ContestsPage() {
                 </div>
 
                 <div className="divide-y divide-[#454932]">
-                  {openContests.map((contest, i) => {
-                    const league = i % 2 === 0 ? 'NBA' : 'NFL';
-                    const style = LEAGUE_STYLES[league];
-                    const entryType = i % 2 === 0 ? 'Multi (M20)' : 'Single Entry';
-                    return (
-                      <button
-                        key={contest.id}
-                        onClick={() => router.push(`/contest/${contest.id}`)}
-                        className="w-full grid grid-cols-[1fr] md:grid-cols-[1fr_120px_100px_120px_100px_140px] gap-4 px-5 py-4 items-center hover:bg-[#1c1f2a] transition-colors text-left group"
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <span className="text-lg shrink-0">{style.icon}</span>
-                          <div className="min-w-0">
-                            <p className="font-heading text-[16px] font-[600] text-white truncate">Contest #{contest.id}</p>
-                            <span className="inline-flex items-center gap-1 font-mono text-[10px] tracking-[0.02em] font-[500] text-[#c6c9ab] bg-[#181b25] px-1.5 py-0.5 mt-0.5">
-                              <Swords className="w-3 h-3" />
-                              {entryType}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="text-right hidden md:block">
-                          <p className="font-mono text-[14px] font-[700] text-primary">${formatUSDC(contest.prizePool)}</p>
-                        </div>
-                        <div className="text-right hidden md:block">
-                          <p className="font-mono text-[14px] font-[700] text-[#dfe2f0]">${i % 2 === 0 ? '10' : '50'}</p>
-                        </div>
-                        <div className="text-right hidden md:block">
-                          <p className="font-mono text-[12px] font-[700] text-[#dfe2f0]">{contest.entryCount} / {i % 2 === 0 ? 1150 : 100}</p>
-                          <div className="w-full h-0.5 bg-[#262a34] mt-1 overflow-hidden">
-                            <div className="h-full bg-white/20" style={{ width: `${Math.min(100, (contest.entryCount / (i % 2 === 0 ? 1150 : 100)) * 100)}%` }} />
-                          </div>
-                        </div>
-                        <div className="text-right hidden md:block">
-                          <p className="font-mono text-[14px] font-[700] text-[#dfe2f0]">{formatCountdown(contest.startTime)}</p>
-                        </div>
-                        <div className="text-right hidden md:block">
-                          <span className="inline-flex items-center gap-1.5 font-mono text-[12px] font-[700] text-primary group-hover:gap-2 transition-all uppercase tracking-wider">
-                            Draft Lineup <ChevronRight className="w-3.5 h-3.5" />
+                  {openContests.map((contest) => (
+                    <button
+                      key={contest.id}
+                      onClick={() => router.push(`/contest/${contest.id}`)}
+                      className="w-full grid grid-cols-[1fr] md:grid-cols-[1fr_120px_100px_120px_140px] gap-4 px-5 py-4 items-center hover:bg-[#1c1f2a] transition-colors text-left group"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className="text-lg shrink-0">⚽</span>
+                        <div className="min-w-0">
+                          <p className="font-heading text-[16px] font-[600] text-white truncate">{contest.name}</p>
+                          <span className="inline-flex items-center gap-1 font-mono text-[10px] tracking-[0.02em] font-[500] text-[#c6c9ab] bg-[#181b25] px-1.5 py-0.5 mt-0.5">
+                            <Trophy className="w-3 h-3" />
+                            WC 2026
                           </span>
                         </div>
+                      </div>
+                      <div className="text-right hidden md:block">
+                        <p className="font-mono text-[14px] font-[700] text-primary">${formatUSDC(contest.prizePool)}</p>
+                      </div>
+                      <div className="text-right hidden md:block">
+                        <p className="font-mono text-[12px] font-[700] text-[#dfe2f0]">{contest.entryCount} entries</p>
+                      </div>
+                      <div className="text-right hidden md:block">
+                        <p className="font-mono text-[14px] font-[700] text-[#dfe2f0]">{formatCountdown(contest.startTime)}</p>
+                      </div>
+                      <div className="text-right hidden md:block">
+                        <span className="inline-flex items-center gap-1.5 font-mono text-[12px] font-[700] text-primary group-hover:gap-2 transition-all uppercase tracking-wider">
+                          Draft Lineup <ChevronRight className="w-3.5 h-3.5" />
+                        </span>
+                      </div>
 
-                        {/* Mobile row */}
-                        <div className="flex items-center justify-between md:hidden pt-2 border-t border-[#454932] mt-2">
-                          <div className="flex items-center gap-3 font-mono text-[12px] text-[#c6c9ab]">
-                            <span className="font-[700]">${formatUSDC(contest.prizePool)}</span>
-                            <span>{contest.entryCount} entries</span>
-                          </div>
-                          <span className="font-mono text-[13px] font-[700] text-[#dfe2f0]">{formatCountdown(contest.startTime)}</span>
+                      {/* Mobile row */}
+                      <div className="flex items-center justify-between md:hidden pt-2 border-t border-[#454932] mt-2">
+                        <div className="flex items-center gap-3 font-mono text-[12px] text-[#c6c9ab]">
+                          <span className="font-[700]">${formatUSDC(contest.prizePool)}</span>
+                          <span>{contest.entryCount} entries</span>
                         </div>
-                      </button>
-                    );
-                  })}
+                        <span className="font-mono text-[13px] font-[700] text-[#dfe2f0]">{formatCountdown(contest.startTime)}</span>
+                      </div>
+                    </button>
+                  ))}
                 </div>
               </div>
             )}
@@ -418,10 +374,10 @@ function ContestsPage() {
                         <div className="w-9 h-9 bg-[#181b25] border border-[#454932] flex items-center justify-center">
                           <CheckCircle2 className="w-4 h-4 text-[#c6c9ab]" />
                         </div>
-                        <div>
-                          <p className="font-heading text-[16px] font-[600] text-white">Contest #{contest.id}</p>
-                          <p className="font-mono text-[12px] text-[#c6c9ab]">{formatTimestamp(contest.startTime)}</p>
-                        </div>
+                      <div>
+                        <p className="font-heading text-[16px] font-[600] text-white">{contest.name}</p>
+                        <p className="font-mono text-[12px] text-[#c6c9ab]">{formatTimestamp(contest.startTime)}</p>
+                      </div>
                       </div>
                       <div className="flex items-center gap-4">
                         <span className="font-mono text-[14px] font-[700] text-[#c6c9ab]">${formatUSDC(contest.prizePool)}</span>

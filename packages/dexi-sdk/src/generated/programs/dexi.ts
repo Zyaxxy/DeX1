@@ -100,7 +100,7 @@ import {
 } from "../pdas";
 
 export const DEXI_PROGRAM_ADDRESS =
-  "5RjcrhEhspU8YLLjWN7SJ3TRJkoLZW3LnkrCWCNgTDb3" as Address<"5RjcrhEhspU8YLLjWN7SJ3TRJkoLZW3LnkrCWCNgTDb3">;
+  "DVhT84igqfyaKaaFDfmjdZGUTNwyoCPQetmVdV5NdTbU" as Address<"DVhT84igqfyaKaaFDfmjdZGUTNwyoCPQetmVdV5NdTbU">;
 
 export enum DexiAccount {
   AdminConfig,
@@ -309,7 +309,7 @@ export function identifyDexiInstruction(
 }
 
 export type ParsedDexiInstruction<
-  TProgram extends string = "5RjcrhEhspU8YLLjWN7SJ3TRJkoLZW3LnkrCWCNgTDb3",
+  TProgram extends string = "DVhT84igqfyaKaaFDfmjdZGUTNwyoCPQetmVdV5NdTbU",
 > =
   | ({ instructionType: DexiInstruction.Buy } & ParsedBuyInstruction<TProgram>)
   | ({

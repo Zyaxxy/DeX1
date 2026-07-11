@@ -9,7 +9,7 @@ pub use constants::*;
 pub use instructions::*;
 pub use state::*;
 
-declare_id!("5RjcrhEhspU8YLLjWN7SJ3TRJkoLZW3LnkrCWCNgTDb3");
+declare_id!("DVhT84igqfyaKaaFDfmjdZGUTNwyoCPQetmVdV5NdTbU");
 
 #[program]
 pub mod dexi {
@@ -52,6 +52,8 @@ pub mod dexi {
         prize_split: Vec<u16>,
         player_mints: Vec<Pubkey>,
         address_lookup_table: Pubkey,
+        name: String,
+        fixture_id: String,
     ) -> Result<()> {
         ctx.accounts.init(
             id,
@@ -60,6 +62,8 @@ pub mod dexi {
             prize_split,
             player_mints,
             address_lookup_table,
+            name,
+            fixture_id,
             &ctx.bumps,
             ctx.remaining_accounts,
         )

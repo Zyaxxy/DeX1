@@ -18,7 +18,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
-import { ADMIN_WALLET_ADDRESS, connection, PROGRAM_ID } from '@/solana/client';
+import { ADMIN_WALLET_ADDRESS, getConnection, PROGRAM_ID } from '@/solana/client';
 
 const MOCK_RECENT = [
   { name: "Kylian Mbappé", ticker: "MBAPPE", role: "Forward", roleColor: "bg-rose-500", price: 2.45, change: 18.7, time: "2h ago", mcap: "$124K" },
@@ -72,7 +72,7 @@ function BondingCurveSVG({ liquidity }: { liquidity: number }) {
 
 export default function LaunchPage() {
   const wallet = useWallet();
-  const { connected, publicKey, signTransaction } = wallet;
+  const { connected, publicKey, sendTransaction } = wallet;
   const { setVisible } = useWalletModal();
 
   useRevolvingTitle([
@@ -113,7 +113,7 @@ export default function LaunchPage() {
       toast.error('Please provide name, ticker, and image.');
       return;
     }
-    if (!signTransaction || !publicKey) {
+    if (!sendTransaction || !publicKey) {
       toast.error('Wallet not connected');
       return;
     }
@@ -129,14 +129,15 @@ export default function LaunchPage() {
       const { WebUploader } = await import("@irys/web-upload");
       const { WebSolana } = await import("@irys/web-upload-solana");
       
-      const irys = await WebUploader(WebSolana).withProvider(wallet).withRpc(connection.rpcEndpoint).devnet().build();
+      const irys = await WebUploader(WebSolana).withProvider(wallet).withRpc(getConnection().rpcEndpoint).devnet().build();
+      const irysGateway = "https://gateway.irys.xyz";
 
       // Estimate metadata size to fund for both image and metadata at once
       const estimatedMetadata = JSON.stringify({
         name,
         symbol: ticker,
         description,
-        image: "https://gateway.irys.xyz/1234567890123456789012345678901234567890123", // 43 char dummy id
+        image: `${irysGateway}/1234567890123456789012345678901234567890123`,
       });
       const metadataSize = new Blob([estimatedMetadata]).size;
       const totalSize = imageFile.size + metadataSize + 1024; // 1KB buffer
@@ -155,7 +156,7 @@ export default function LaunchPage() {
       toast.loading('Uploading image...', { id: 'launch' });
       const imageTags = [{ name: "Content-Type", value: imageFile.type }];
       const imageReceipt = await irys.uploadFile(imageFile, { tags: imageTags });
-      const imageUrl = `https://gateway.irys.xyz/${imageReceipt.id}`;
+      const imageUrl = `${irysGateway}/${imageReceipt.id}`;
 
       const metadataObj = {
         name,
@@ -167,7 +168,7 @@ export default function LaunchPage() {
       const metadataTags = [{ name: "Content-Type", value: "application/json" }];
       toast.loading('Uploading metadata...', { id: 'launch' });
       const metadataReceipt = await irys.upload(JSON.stringify(metadataObj), { tags: metadataTags });
-      const metadataUrl = `https://gateway.irys.xyz/${metadataReceipt.id}`;
+      const metadataUrl = `${irysGateway}/${metadataReceipt.id}`;
 
       toast.loading('Creating token and pool...', { id: 'launch' });
 
@@ -175,7 +176,7 @@ export default function LaunchPage() {
       const mintKeypair = Keypair.generate();
       const decimals = 6;
       
-      const lamports = await connection.getMinimumBalanceForRentExemption(MINT_SIZE);
+      const lamports = await getConnection().getMinimumBalanceForRentExemption(MINT_SIZE);
 
       const createAccountIx = SystemProgram.createAccount({
         fromPubkey: publicKey,
@@ -232,7 +233,7 @@ export default function LaunchPage() {
       const adminKey = publicKey;
       const mintKey = mintKeypair.publicKey;
       const [configPda] = await findConfigPda();
-      const configInfo = await connection.getAccountInfo(new PublicKey(configPda));
+      const configInfo = await getConnection().getAccountInfo(new PublicKey(configPda));
       if (!configInfo) throw new Error("Config not found");
       const configData = decodeAdminConfig({
         address: configPda as any,
@@ -242,7 +243,7 @@ export default function LaunchPage() {
       
       const usdcMint = new PublicKey(configData.usdcMint);
       
-      const usdcMintInfo = await connection.getAccountInfo(usdcMint);
+      const usdcMintInfo = await getConnection().getAccountInfo(usdcMint);
       const usdcTokenProgramId = usdcMintInfo?.owner || TOKEN_PROGRAM_ID;
 
       const [poolPda] = PublicKey.findProgramAddressSync(
@@ -320,8 +321,8 @@ export default function LaunchPage() {
         BigInt(usdcSupplyNum * (10 ** 6))
       );
 
-      const tokenVaultInfo = await connection.getAccountInfo(poolTokenVault);
-      const usdcVaultInfo = await connection.getAccountInfo(poolUsdcVault);
+      const tokenVaultInfo = await getConnection().getAccountInfo(poolTokenVault);
+      const usdcVaultInfo = await getConnection().getAccountInfo(poolUsdcVault);
 
       const instructions = [
         createAccountIx,
@@ -334,7 +335,7 @@ export default function LaunchPage() {
         mintUsdcToPoolIx
       ];
 
-      const { blockhash } = await connection.getLatestBlockhash();
+      const { blockhash } = await getConnection().getLatestBlockhash();
       const msg = new TransactionMessage({
         payerKey: adminKey,
         recentBlockhash: blockhash,
@@ -345,9 +346,8 @@ export default function LaunchPage() {
       tx.sign([mintKeypair]);
       
       toast.loading('Please approve the transaction...', { id: 'launch' });
-      const signed = await signTransaction(tx);
-      const sig = await connection.sendRawTransaction(signed.serialize());
-      await connection.confirmTransaction(sig, 'confirmed');
+      const sig = await sendTransaction(tx, getConnection());
+      await getConnection().confirmTransaction(sig, 'confirmed');
 
       toast.success('Token launched successfully!', { id: 'launch' });
       

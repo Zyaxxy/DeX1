@@ -1,12 +1,14 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { rpc, PROGRAM_ID, connection } from '@/solana/client';
+import { getRpc, PROGRAM_ID, getConnection } from '@/solana/client';
 import { decodeAthletePool, ATHLETE_POOL_DISCRIMINATOR, findConfigPda, decodeAdminConfig } from '@dexi/sdk';
 import { getBase58Decoder } from '@solana/kit';
 import { PublicKey } from '@solana/web3.js';
 import { getAssociatedTokenAddressSync, AccountLayout } from '@solana/spl-token';
+import { Metadata } from '@metaplex-foundation/mpl-token-metadata';
 
+const MPL_PROGRAM_ID = new PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s");
 const POLL_INTERVAL = 15000;
 const MAX_PRICE_HISTORY = 60;
 
@@ -20,6 +22,7 @@ interface PoolRaw {
   poolTokens: bigint;
   poolUsdcVault: string;
   poolTokenVault: string;
+  image?: string;
 }
 
 export interface PoolMarket extends PoolRaw {
@@ -56,7 +59,7 @@ export function useMarketData() {
 
   const fetchPools = useCallback(async () => {
     try {
-      const response = await rpc.getProgramAccounts(PROGRAM_ID.toBase58() as any, {
+      const response = await getRpc().getProgramAccounts(PROGRAM_ID.toBase58() as any, {
         encoding: 'base64',
         filters: [
           { memcmp: { offset: BigInt(0), encoding: 'base58', bytes: getBase58Decoder().decode(ATHLETE_POOL_DISCRIMINATOR) as any } }
@@ -78,7 +81,7 @@ export function useMarketData() {
       }
 
       const [configPda] = await findConfigPda();
-      const configInfo = await connection.getAccountInfo(new PublicKey(configPda));
+      const configInfo = await getConnection().getAccountInfo(new PublicKey(configPda));
       if (!configInfo) throw new Error("Config not found");
       const configData = decodeAdminConfig({
         address: configPda,
@@ -100,7 +103,7 @@ export function useMarketData() {
         );
       }
 
-      const accountInfos = await connection.getMultipleAccountsInfo(vaultAddresses);
+      const accountInfos = await getConnection().getMultipleAccountsInfo(vaultAddresses);
 
       const formatted: PoolRaw[] = decodedPools.map((pool: any, i: number) => {
         const tokenVault = accountInfos[i * 2];
@@ -126,11 +129,39 @@ export function useMarketData() {
         };
       });
 
+      const poolsWithImages: PoolRaw[] = await Promise.all(
+        formatted.map(async (p) => {
+          try {
+            const [metadataPda] = PublicKey.findProgramAddressSync(
+              [Buffer.from("metadata"), MPL_PROGRAM_ID.toBuffer(), new PublicKey(p.mint).toBuffer()],
+              MPL_PROGRAM_ID
+            );
+            const metadataInfo = await getConnection().getAccountInfo(metadataPda);
+            if (metadataInfo?.data) {
+              const metadata = Metadata.deserialize(metadataInfo.data)[0];
+              const uri = metadata.data.uri?.trim();
+              if (uri) {
+                try {
+                  const response = await fetch(uri);
+                  const metadataJson = await response.json();
+                  return { ...p, image: metadataJson.image || undefined };
+                } catch {
+                  return { ...p, image: uri };
+                }
+              }
+            }
+            return p;
+          } catch {
+            return p;
+          }
+        })
+      );
+
       const histories = priceHistoriesRef.current;
       const firstPrices = firstPricesRef.current;
       const now = Date.now();
 
-      for (const p of formatted) {
+      for (const p of poolsWithImages) {
         if (!firstPrices.has(p.mint)) firstPrices.set(p.mint, p.price);
         const h = histories.get(p.mint) || [];
         h.push({ time: now, price: p.price });
@@ -138,7 +169,7 @@ export function useMarketData() {
         histories.set(p.mint, h);
       }
 
-      const enabled = formatted.filter(p => p.enabled);
+      const enabled = poolsWithImages.filter(p => p.enabled);
       const finalPools: PoolMarket[] = enabled.map(p => {
         const h = histories.get(p.mint) || [];
         const fp = firstPrices.get(p.mint) || p.price;
@@ -146,7 +177,7 @@ export function useMarketData() {
         return { ...p, priceChange: pc, volume24h: Number(p.poolUsdc) / 1e6, priceHistory: h };
       });
 
-      poolMetasRef.current = formatted;
+      poolMetasRef.current = poolsWithImages;
       poolVaultsRef.current = formatted.map(p => ({
         usdcVault: new PublicKey(p.poolUsdcVault),
         tokenVault: new PublicKey(p.poolTokenVault),
@@ -172,7 +203,7 @@ export function useMarketData() {
     const v = vaults[idx];
 
     try {
-      const sigs = await connection.getSignaturesForAddress(v.usdcVault, { limit: 5 });
+      const sigs = await getConnection().getSignaturesForAddress(v.usdcVault, { limit: 5 });
       if (sigs.length === 0) return;
 
       const lastSig = lastSigsRef.current.get(v.mint);
@@ -185,7 +216,7 @@ export function useMarketData() {
 
       newSigs.reverse();
       for (const sigInfo of newSigs) {
-        const tx = await connection.getParsedTransaction(sigInfo.signature, {
+        const tx = await getConnection().getParsedTransaction(sigInfo.signature, {
           maxSupportedTransactionVersion: 0,
         });
         if (!tx || !tx.meta || !tx.blockTime) continue;

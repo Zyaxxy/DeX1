@@ -22,7 +22,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 
-import { connection, rpc, PROGRAM_ID, ROLE_LABELS, CONTEST_STATUS_LABELS, ROLE_COLORS, formatUSDC, formatTimestamp, ROLE_REQUIREMENTS, LINEUP_SIZE } from '@/solana/client';
+import { getConnection, getRpc, PROGRAM_ID, ROLE_LABELS, CONTEST_STATUS_LABELS, ROLE_COLORS, formatUSDC, formatTimestamp, ROLE_REQUIREMENTS, LINEUP_SIZE } from '@/solana/client';
 import { toast } from 'sonner';
 import { decodeAthletePool, ATHLETE_POOL_DISCRIMINATOR, decodeContest, ContestStatus } from '@dexi/sdk';
 import { getBase58Decoder } from '@solana/kit';
@@ -44,6 +44,8 @@ interface ContestData {
   prizeSplit: number[];
   settled: boolean;
   addressLookupTable: string;
+  name: string;
+  fixtureId: string;
 }
 
 const ROLE_ICONS: Record<string, typeof Shield> = {
@@ -81,9 +83,10 @@ function ContestDetailContent() {
   const params = useParams();
   const router = useRouter();
   const contestId = params?.id ? parseInt(params.id as string) : 1;
-  const { connected, publicKey, signTransaction } = useWallet();
+  const { connected, publicKey, sendTransaction } = useWallet();
   const { setVisible } = useWalletModal();
   const [contest, setContest] = useState<ContestData | null>(null);
+  const [contestMints, setContestMints] = useState<Set<string>>(new Set());
   const [selectedAthletes, setSelectedAthletes] = useState<Athlete[]>([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -95,26 +98,25 @@ function ContestDetailContent() {
   const [fetchError, setFetchError] = useState<string | null>(null);
 
   const revolvingTitles = useMemo(() => [
-    contest ? `Contest #${contestId} | DEXI` : 'Contest | DEXI',
-    `Fantasy Contest #${contestId} | DEXI`,
-    `Live Contest #${contestId} | DEXI`,
-  ], [contest, contestId]);
+    contest ? `${contest.name} | DEXI` : 'Contest | DEXI',
+    contest ? `${contest.name} — Draft Lineup | DEXI` : 'Contest | DEXI',
+  ], [contest]);
 
   useRevolvingTitle(revolvingTitles);
 
   const meta = useMemo(() => ({
-    title: `Contest #${contestId} | DEXI`,
-    description: `View and enter fantasy contest #${contestId} on DEXI. Draft athletes and compete for USDC prizes.`,
-    ogTitle: `Contest #${contestId} — DEXI`,
-    ogDescription: `Enter fantasy contest #${contestId} on DEXI.`,
-  }), [contestId]);
+    title: contest ? `${contest.name} | DEXI` : `Contest | DEXI`,
+    description: contest ? `Enter the ${contest.name} fantasy contest on DEXI. Draft athletes and compete for USDC prizes.` : 'Fantasy contest on DEXI.',
+    ogTitle: contest ? `${contest.name} — DEXI` : 'Contest — DEXI',
+    ogDescription: contest ? `Enter ${contest.name} on DEXI.` : 'Enter fantasy contest on DEXI.',
+  }), [contest]);
 
   usePageMeta(meta);
 
   useEffect(() => {
     async function fetchAthletes() {
       try {
-        const response = await rpc.getProgramAccounts(PROGRAM_ID.toBase58() as any, {
+        const response = await getRpc().getProgramAccounts(PROGRAM_ID.toBase58() as any, {
           encoding: 'base64',
           filters: [{ memcmp: { offset: BigInt(0), encoding: 'base58', bytes: getBase58Decoder().decode(ATHLETE_POOL_DISCRIMINATOR) as any } }]
         }).send();
@@ -131,7 +133,7 @@ function ContestDetailContent() {
         setFetchError(null);
       } catch (err) {
         console.error("Failed to fetch athletes:", err);
-        setFetchError('Failed to load athlete pools. Check your RPC connection.');
+        setFetchError('Failed to load athlete pools. Check your RPC getConnection().');
       }
     }
     fetchAthletes();
@@ -141,7 +143,7 @@ function ContestDetailContent() {
     async function fetchContest() {
       try {
         const [contestPda] = await findContestPda({ id: contestId });
-        const response = await rpc.getAccountInfo(contestPda, { encoding: 'base64', commitment: 'confirmed' }).send();
+        const response = await getRpc().getAccountInfo(contestPda, { encoding: 'base64', commitment: 'confirmed' }).send();
 
         if (!response || !response.value) {
           setFetchError('Contest not found. It may not exist yet.');
@@ -168,8 +170,21 @@ function ContestDetailContent() {
           prizeSplit: decoded.prizeSplit.slice(0, decoded.winnerCount),
           settled: decoded.status === ContestStatus.Settled,
           addressLookupTable: decoded.addressLookupTable.toString(),
+          name: decoded.name || `Match #${decoded.id}`,
+          fixtureId: decoded.fixtureId || '',
         });
         setFetchError(null);
+
+        try {
+          const { PublicKey } = await import('@solana/web3.js');
+          const lutAddress = new PublicKey(decoded.addressLookupTable.toString());
+          const lutInfo = await getConnection().getAddressLookupTable(lutAddress);
+          if (lutInfo.value) {
+            setContestMints(new Set(lutInfo.value.state.addresses.map(a => a.toBase58())));
+          }
+        } catch (e) {
+          console.error("Failed to fetch LUT for available athletes filter", e);
+        }
       } catch (err) {
         console.error("Failed to fetch contest:", err);
         setFetchError('Failed to load contest data.');
@@ -230,7 +245,7 @@ function ContestDetailContent() {
   }, []);
 
   const handleEnterContest = async () => {
-    if (!connected || !publicKey || !signTransaction) {
+    if (!connected || !publicKey || !sendTransaction) {
       toast.error('Please connect your wallet');
       return;
     }
@@ -238,6 +253,10 @@ function ContestDetailContent() {
     setSubmitting(true);
     setTxSignature(null);
     try {
+      if (!contest) {
+        toast.error('Contest data not loaded');
+        return;
+      }
       const userKey = new PublicKey(publicKey.toString());
       const [contestPda] = await findContestPda({ id: contestId });
       const contestKey = new PublicKey(contestPda);
@@ -292,19 +311,21 @@ function ContestDetailContent() {
         data: Buffer.from(instructionData),
       });
 
-      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+      const { blockhash, lastValidBlockHeight } = await getConnection().getLatestBlockhash('confirmed');
+
+      const lutAddress = new PublicKey(contest.addressLookupTable);
+      const lutInfo = await getConnection().getAddressLookupTable(lutAddress);
 
       const messageV0 = new TransactionMessage({
         payerKey: userKey,
         recentBlockhash: blockhash,
         instructions: [instruction],
-      }).compileToV0Message();
+      }).compileToV0Message(lutInfo.value ? [lutInfo.value] : []);
 
       const transaction = new VersionedTransaction(messageV0);
-      const signedTransaction = await signTransaction(transaction);
-      const signature = await connection.sendTransaction(signedTransaction);
+      const signature = await sendTransaction(transaction, getConnection());
 
-      const confirmation = await connection.confirmTransaction({
+      const confirmation = await getConnection().confirmTransaction({
         signature,
         blockhash,
         lastValidBlockHeight,
@@ -334,11 +355,12 @@ function ContestDetailContent() {
 
   const filteredAthletes = useMemo(() => {
     return availableAthletes.filter(athlete => {
+      const isAllowed = contestMints.size === 0 || contestMints.has(athlete.mint);
       const matchesSearch = athlete.name.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesRole = roleFilter === 'all' || ROLE_LABELS[athlete.role] === roleFilter;
-      return matchesSearch && matchesRole;
+      return isAllowed && matchesSearch && matchesRole;
     });
-  }, [availableAthletes, searchQuery, roleFilter]);
+  }, [availableAthletes, searchQuery, roleFilter, contestMints]);
 
   const athletesByRole = useMemo(() => {
     const map: Record<string, Athlete[]> = {};
@@ -419,11 +441,9 @@ function ContestDetailContent() {
         <Navbar />
         <main className="flex-1 w-full max-w-[1440px] mx-auto px-6 py-8">
           <div className="flex items-center gap-2 font-mono text-[12px] text-[#c6c9ab] mb-6">
-            <button onClick={() => router.push('/markets')} className="hover:text-white transition-colors">Markets</button>
+            <button onClick={() => router.push('/contests')} className="hover:text-white transition-colors">Contests</button>
             <ChevronRight className="w-4 h-4" />
-            <button onClick={() => router.push('/portfolio')} className="hover:text-white transition-colors">Portfolio</button>
-            <ChevronRight className="w-4 h-4" />
-            <span className="text-white">Contest #{contest.id}</span>
+            <span className="text-white">{contest.name}</span>
           </div>
 
           <div className="border border-[#454932] overflow-hidden">
@@ -431,7 +451,7 @@ function ContestDetailContent() {
               <div className="flex justify-between items-start">
                 <div>
                   <h1 className="font-heading text-[clamp(1.8rem,3.5vw,2.5rem)] font-[700] text-white leading-[1.1] tracking-[-0.02em] mb-3">
-                    Contest #{contest.id}
+                    {contest.name}
                   </h1>
                   <span className={`font-mono text-[12px] font-[700] px-3 py-1 ${contest.status === 1 ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30' : 'bg-blue-500/15 text-blue-400 border border-blue-500/30'}`}>
                     {CONTEST_STATUS_LABELS[contest.status]}
@@ -471,7 +491,7 @@ function ContestDetailContent() {
           <div className="flex items-center gap-1.5 font-mono text-[12px] text-[#c6c9ab]">
             <button onClick={() => router.push('/contests')} className="hover:text-white transition-colors">Dashboard</button>
             <ChevronRight className="w-3 h-3" />
-            <span className="text-white font-[700]">Contest #{contest.id}</span>
+            <span className="text-white font-[700]">{contest.name}</span>
           </div>
         </div>
 
@@ -483,7 +503,7 @@ function ContestDetailContent() {
                 <div>
                   <div className="flex items-center gap-3 mb-1">
                     <h1 className="font-heading text-[clamp(1.5rem,2.5vw,2rem)] font-[700] text-white leading-[1.1] tracking-[-0.02em]">
-                      Contest #{contest.id}
+                      {contest.name}
                     </h1>
                     <span className="inline-flex items-center gap-1.5 font-mono text-[11px] font-[700] text-positive bg-positive/10 px-2.5 py-0.5 border border-positive/20">
                       <span className="w-1.5 h-1.5 rounded-full bg-positive animate-pulse" />

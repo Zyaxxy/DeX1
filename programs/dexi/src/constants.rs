@@ -16,6 +16,10 @@ pub const SWAP_BURN_PCT: u64 = 90;
 pub const MAX_PRIZE_SPLIT: usize = 10;
 /// Max byte-length for athlete / pool names (must match `#[max_len(32)]` in state).
 pub const MAX_NAME_LEN: usize = 32;
+/// Max byte-length for contest display names (match title e.g. "Germany vs France - QF").
+pub const MAX_CONTEST_NAME_LEN: usize = 64;
+/// Max byte-length for TxLINE fixture IDs.
+pub const MAX_FIXTURE_ID_LEN: usize = 32;
 
 // ── Lineup composition rules ───────────────────────────────────────────────────
 pub const LINEUP_SIZE: usize = 11;

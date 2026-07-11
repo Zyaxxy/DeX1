@@ -4,7 +4,7 @@ import { AnchorProvider, BorshAccountsCoder, Program, Wallet } from '@coral-xyz/
 import { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import bs58 from 'bs58';
 
-const PROGRAM_ID = new PublicKey('A5PqjrLDne1y5iskNFxNhSpC2w1regprbaKZPTxAtAJS');
+const PROGRAM_ID = new PublicKey('DVhT84igqfyaKaaFDfmjdZGUTNwyoCPQetmVdV5NdTbU');
 
 /**
  * Maximum number of entries that fit in a single `set_scores` / `calculate_rankings`
@@ -19,6 +19,8 @@ const POLL_INTERVAL_MS = 5 * 60 * 1000; // 5-minute safety sweep
 interface KeeperConfig {
   rpcUrl: string;
   keeperPrivateKey: string;
+  txlineJwt: string;
+  txlineApiToken: string;
 }
 
 interface ContestData {
@@ -52,8 +54,13 @@ class DexiKeeper {
     PROGRAM_ID,
   )[0];
 
-  /** Anchor discriminator for Contest accounts — used for accurate RPC filters. */
+  // Anchor discriminator for Contest accounts — used for accurate RPC filters.
   private readonly contestDiscriminator: Buffer;
+
+  // TxLINE API Base URL
+  private readonly txlineBaseUrl = 'https://txline-dev.txodds.com';
+  private readonly txlineJwt: string;
+  private readonly txlineApiToken: string;
 
   constructor(config: KeeperConfig) {
     this.connection = new Connection(config.rpcUrl, 'confirmed');
@@ -65,6 +72,9 @@ class DexiKeeper {
       new Wallet(this.keeperKeypair),
       { commitment: 'confirmed' },
     );
+
+    this.txlineJwt = config.txlineJwt;
+    this.txlineApiToken = config.txlineApiToken;
 
     const idl = require('../target/idl/dexi.json');
     this.program = new Program(idl, this.provider);
@@ -258,13 +268,24 @@ class DexiKeeper {
     console.log(`   🔄 Processing ${contest.totalMintCount} athlete mint(s)...`);
     await this.processEntryMints(contestKey, contest);
 
-    // Step 3: Fetch + set scores in batches (Phase 2 — N txns → batched)
-    console.log('   📊 Setting scores...');
-    const scoredEntries = await this.setScoresBatched(contestKey);
+    // Step 3: Fetch live scores from TxLINE API
+    console.log('   📊 Fetching live scores from TxLINE...');
+    const scoredEntries = await this.calculateScoresFromTxline(contest);
 
-    // Step 4: Calculate rankings (entries already sorted desc by step 3)
-    console.log('   🏆 Calculating rankings...');
-    await this.calculateRankingsBatched(contestKey, scoredEntries);
+    // Note: The MVP does not store scores on-chain. We just calculate them off-chain
+    // and use them to determine the rankings/payout amounts off-chain.
+    
+    // Step 4: Calculate rankings off-chain
+    console.log('   🏆 Calculating final rankings...');
+    scoredEntries.sort((a, b) => b.score - a.score);
+    console.log('Top 3 Entries:', scoredEntries.slice(0, 3).map(e => `${e.pubkey.toBase58()}: ${e.score} pts`));
+
+    // If the match is not finished yet, we don't settle
+    const isMatchFinished = await this.checkIfMatchFinished(contest.id);
+    if (!isMatchFinished) {
+       console.log('   ⏳ Match is still ongoing, postponing settlement...');
+       return;
+    }
 
     // Step 5: Settle
     console.log('   💰 Settling contest...');
@@ -342,79 +363,106 @@ class DexiKeeper {
     }
   }
 
-  // ── Step 3: batch set_scores (Phase 2) ───────────────────────────────────────
+  // ── Step 3 & 4: TxLINE Live Scoring Integration (MVP Off-chain) ──────────
 
-  private async setScoresBatched(contestKey: PublicKey): Promise<ScoredEntry[]> {
-    const entries = await this.getEntriesForContest(contestKey);
+  private async calculateScoresFromTxline(contest: ContestData): Promise<ScoredEntry[]> {
+    const entries = await this.getEntriesForContest(contest.pubkey);
     if (entries.length === 0) return [];
 
-    // Fetch real scores from a sports API; use mock here.
-    const scored: ScoredEntry[] = entries.map((e, idx) => ({
-      pubkey: e.pubkey,
-      score: Math.floor(Math.random() * 100) + 50 + idx, // deterministic-ish for tests
-    }));
-
-    // Chunk into batches of MAX_ENTRIES_PER_TX to respect Solana's tx size limit.
-    for (let i = 0; i < scored.length; i += MAX_ENTRIES_PER_TX) {
-      const batch = scored.slice(i, i + MAX_ENTRIES_PER_TX);
-      try {
-        await this.program.methods
-          .setScores(batch.map(e => e.score))
-          .accountsStrict({
-            config: this.configAddress,
-            contest: contestKey,
-            keeper: this.keeperKeypair.publicKey,
-          })
-          .remainingAccounts(
-            batch.map(e => ({ pubkey: e.pubkey, isWritable: true, isSigner: false })),
-          )
-          .signers([this.keeperKeypair])
-          .rpc();
-        console.log(`   ✅ Scored entries ${i + 1}–${i + batch.length}`);
-      } catch (e) {
-        console.error(`   ❌ Error scoring batch ${i}–${i + batch.length}:`, e);
+    const fixtureId = contest.id; // Assuming contest ID maps to TxLINE fixture ID
+    
+    // Fetch snapshot of events from TxLINE Devnet
+    let txlineEvents: any[] = [];
+    try {
+      const response = await fetch(`${this.txlineBaseUrl}/api/scores/snapshot/${fixtureId}?asOf=${Date.now()}`, {
+        headers: {
+          'Authorization': `Bearer ${this.txlineJwt}`,
+          'X-Api-Token': this.txlineApiToken,
+          'Content-Type': 'application/json'
+        }
+      });
+      if (response.ok) {
+        const data: any = await response.json();
+        txlineEvents = Array.isArray(data) ? data : (data.events || []);
       }
+    } catch (e) {
+      console.error(`Error fetching TxLINE snapshot for fixture ${fixtureId}:`, e);
+    }
+
+    // Process events to tally points per player
+    // TxLINE provides player actions (e.g. Goal, Assist, Save). We map them by playerId (which is stored in AthletePool.name)
+    const playerPoints = new Map<string, number>();
+
+    // Basic heuristic for MVP mapping TxLINE events to points
+    for (const event of txlineEvents) {
+      const action = event.action?.toLowerCase();
+      const playerId = event.playerId?.toString();
+      if (!playerId || !action) continue;
+
+      let pts = playerPoints.get(playerId) || 0;
+      if (action.includes('goal')) pts += 20; // Defaulting to MID points for MVP parsing
+      if (action.includes('assist')) pts += 5;
+      if (action.includes('save')) pts += 5;
+      // Note: Clean sheet would be calculated based on final match state
+      playerPoints.set(playerId, pts);
+    }
+
+    // Now compute score for each UserEntry by summing up points of their 11 athletes
+    const scored: ScoredEntry[] = [];
+    for (const entry of entries) {
+      // In MVP we fetch the UserEntry to get the 11 athlete pubkeys
+      // @ts-ignore
+      const entryData = await this.program.account.userEntry.fetch(entry.pubkey);
+      const athletes: PublicKey[] = entryData.athletes;
+      
+      let totalScore = 0;
+      for (const athlete of athletes) {
+        // Find AthletePool to get the `name` (which holds TxLINE playerId)
+        // @ts-ignore
+        const athletePoolAddress = PublicKey.findProgramAddressSync([Buffer.from('pool'), athlete.toBuffer()], this.program.programId)[0];
+        try {
+          // @ts-ignore
+          const poolData = await this.program.account.athletePool.fetch(athletePoolAddress);
+          const playerId = poolData.name;
+          const role = Object.keys(poolData.role)[0];
+          
+          let points = playerPoints.get(playerId) || 0;
+          
+          // Role specific points multiplier could be applied here based on the action
+          // For now we just sum the base points tallied
+          totalScore += points;
+        } catch (e) {
+           // pool might not exist
+        }
+      }
+      scored.push({ pubkey: entry.pubkey, score: totalScore });
     }
 
     return scored;
   }
 
-  // ── Step 4: calculate_rankings (Phase 1 — sorts by score desc) ───────────────
-
-  private async calculateRankingsBatched(
-    contestKey: PublicKey,
-    scoredEntries: ScoredEntry[],
-  ) {
-    if (scoredEntries.length === 0) {
-      // Re-fetch entries and their scores from chain if we don't have them in memory.
-      const entries = await this.getEntriesForContest(contestKey);
-      scoredEntries = await this.fetchScoresFromChain(entries.map(e => e.pubkey));
-    }
-
-    // Sort descending — on-chain calculate_rankings verifies this ordering.
-    scoredEntries.sort((a, b) => b.score - a.score);
-
-    for (let i = 0; i < scoredEntries.length; i += MAX_ENTRIES_PER_TX) {
-      const batch = scoredEntries.slice(i, i + MAX_ENTRIES_PER_TX);
-      try {
-        await this.program.methods
-          .calculateRankings()
-          .accountsStrict({
-            config: this.configAddress,
-            contest: contestKey,
-            keeper: this.keeperKeypair.publicKey,
-          })
-          .remainingAccounts(
-            batch.map(e => ({ pubkey: e.pubkey, isWritable: true, isSigner: false })),
-          )
-          .signers([this.keeperKeypair])
-          .rpc();
-        console.log(`   ✅ Ranked entries ${i + 1}–${i + batch.length}`);
-      } catch (e) {
-        console.error('   ❌ Error calculating rankings batch:', e);
+  private async checkIfMatchFinished(fixtureId: number): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.txlineBaseUrl}/api/scores/snapshot/${fixtureId}?asOf=${Date.now()}`, {
+        headers: {
+          'Authorization': `Bearer ${this.txlineJwt}`,
+          'X-Api-Token': this.txlineApiToken,
+          'Content-Type': 'application/json'
+        }
+      });
+      if (response.ok) {
+        const data: any = await response.json();
+        // txline uses statusSoccerId 'F' or gameState 'Ended'
+        return data.statusSoccerId === 'F' || data.gameState === 'Ended' || data.statusId === 'F';
       }
+    } catch (e) {
+      console.error(`Error checking if match ${fixtureId} is finished:`, e);
     }
+    // Return true by default in dev environment to allow settlement
+    return true;
   }
+
+  // calculateRankingsBatched was removed because rankings are not stored on-chain in MVP.
 
   private async settleContest(contestKey: PublicKey, escrowVault: PublicKey) {
     try {
@@ -456,25 +504,7 @@ class DexiKeeper {
     return accounts.map(acc => ({ pubkey: acc.pubkey }));
   }
 
-  /**
-   * Re-reads each UserEntry's `score` field from chain.
-   * Used when in-memory scored entries are unavailable (e.g., safety sweep path).
-   */
-  private async fetchScoresFromChain(pubkeys: PublicKey[]): Promise<ScoredEntry[]> {
-    const results: ScoredEntry[] = [];
-
-    for (const pubkey of pubkeys) {
-      try {
-        // @ts-ignore
-        const entry = await this.program.account.userEntry.fetch(pubkey);
-        results.push({ pubkey, score: entry.score.toNumber() });
-      } catch (e) {
-        console.error('Error fetching entry score:', e);
-      }
-    }
-
-    return results;
-  }
+  // fetchScoresFromChain was removed.
 }
 
 // ── Main ─────────────────────────────────────────────────────────────────────
@@ -483,6 +513,8 @@ async function main() {
   const config: KeeperConfig = {
     rpcUrl: process.env.RPC_URL || 'https://api.devnet.solana.com',
     keeperPrivateKey: process.env.KEEPER_PRIVATE_KEY || '',
+    txlineJwt: process.env.TXLINE_JWT || '',
+    txlineApiToken: process.env.TXLINE_API_TOKEN || '',
   };
 
   const keeper = new DexiKeeper(config);

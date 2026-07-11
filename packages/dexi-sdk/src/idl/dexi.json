@@ -1,5 +1,5 @@
 {
-  "address": "5RjcrhEhspU8YLLjWN7SJ3TRJkoLZW3LnkrCWCNgTDb3",
+  "address": "DVhT84igqfyaKaaFDfmjdZGUTNwyoCPQetmVdV5NdTbU",
   "metadata": {
     "name": "dexi",
     "version": "0.1.0",
@@ -546,6 +546,14 @@
         {
           "name": "address_lookup_table",
           "type": "pubkey"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "fixture_id",
+          "type": "string"
         }
       ]
     },
@@ -2165,6 +2173,20 @@
               "The Address Lookup Table containing all shared contest accounts (mints, pools, vaults)."
             ],
             "type": "pubkey"
+          },
+          {
+            "name": "name",
+            "docs": [
+              "Display name e.g. \"Germany vs France - QF\""
+            ],
+            "type": "string"
+          },
+          {
+            "name": "fixture_id",
+            "docs": [
+              "TxLINE fixture ID for match-based scoring"
+            ],
+            "type": "string"
           }
         ]
       }

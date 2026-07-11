@@ -7,6 +7,8 @@
  */
 
 import {
+  addDecoderSizePrefix,
+  addEncoderSizePrefix,
   combineCodec,
   fixDecoderSize,
   fixEncoderSize,
@@ -22,10 +24,14 @@ import {
   getStructEncoder,
   getU16Decoder,
   getU16Encoder,
+  getU32Decoder,
+  getU32Encoder,
   getU64Decoder,
   getU64Encoder,
   getU8Decoder,
   getU8Encoder,
+  getUtf8Decoder,
+  getUtf8Encoder,
   SOLANA_ERROR__PROGRAM_CLIENTS__INSUFFICIENT_ACCOUNT_METAS,
   SolanaError,
   transformEncoder,
@@ -117,6 +123,8 @@ export type CreateContestInstructionData = {
   prizeSplit: Array<number>;
   playerMints: Array<Address>;
   addressLookupTable: Address;
+  name: string;
+  fixtureId: string;
 };
 
 export type CreateContestInstructionDataArgs = {
@@ -126,6 +134,8 @@ export type CreateContestInstructionDataArgs = {
   prizeSplit: Array<number>;
   playerMints: Array<Address>;
   addressLookupTable: Address;
+  name: string;
+  fixtureId: string;
 };
 
 export function getCreateContestInstructionDataEncoder(): Encoder<CreateContestInstructionDataArgs> {
@@ -138,6 +148,8 @@ export function getCreateContestInstructionDataEncoder(): Encoder<CreateContestI
       ["prizeSplit", getArrayEncoder(getU16Encoder())],
       ["playerMints", getArrayEncoder(getAddressEncoder())],
       ["addressLookupTable", getAddressEncoder()],
+      ["name", addEncoderSizePrefix(getUtf8Encoder(), getU32Encoder())],
+      ["fixtureId", addEncoderSizePrefix(getUtf8Encoder(), getU32Encoder())],
     ]),
     (value) => ({ ...value, discriminator: CREATE_CONTEST_DISCRIMINATOR }),
   );
@@ -152,6 +164,8 @@ export function getCreateContestInstructionDataDecoder(): Decoder<CreateContestI
     ["prizeSplit", getArrayDecoder(getU16Decoder())],
     ["playerMints", getArrayDecoder(getAddressDecoder())],
     ["addressLookupTable", getAddressDecoder()],
+    ["name", addDecoderSizePrefix(getUtf8Decoder(), getU32Decoder())],
+    ["fixtureId", addDecoderSizePrefix(getUtf8Decoder(), getU32Decoder())],
   ]);
 }
 
@@ -194,6 +208,8 @@ export type CreateContestAsyncInput<
   prizeSplit: CreateContestInstructionDataArgs["prizeSplit"];
   playerMints: CreateContestInstructionDataArgs["playerMints"];
   addressLookupTable: CreateContestInstructionDataArgs["addressLookupTable"];
+  name: CreateContestInstructionDataArgs["name"];
+  fixtureId: CreateContestInstructionDataArgs["fixtureId"];
 };
 
 export async function getCreateContestInstructionAsync<
@@ -336,6 +352,8 @@ export type CreateContestInput<
   prizeSplit: CreateContestInstructionDataArgs["prizeSplit"];
   playerMints: CreateContestInstructionDataArgs["playerMints"];
   addressLookupTable: CreateContestInstructionDataArgs["addressLookupTable"];
+  name: CreateContestInstructionDataArgs["name"];
+  fixtureId: CreateContestInstructionDataArgs["fixtureId"];
 };
 
 export function getCreateContestInstruction<

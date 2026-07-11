@@ -7,6 +7,8 @@
  */
 
 import {
+  addDecoderSizePrefix,
+  addEncoderSizePrefix,
   assertAccountExists,
   assertAccountsExist,
   combineCodec,
@@ -27,19 +29,23 @@ import {
   getStructEncoder,
   getU16Decoder,
   getU16Encoder,
+  getU32Decoder,
+  getU32Encoder,
   getU64Decoder,
   getU64Encoder,
   getU8Decoder,
   getU8Encoder,
+  getUtf8Decoder,
+  getUtf8Encoder,
   transformEncoder,
   type Account,
   type Address,
+  type Codec,
+  type Decoder,
   type EncodedAccount,
+  type Encoder,
   type FetchAccountConfig,
   type FetchAccountsConfig,
-  type FixedSizeCodec,
-  type FixedSizeDecoder,
-  type FixedSizeEncoder,
   type MaybeAccount,
   type MaybeEncodedAccount,
   type ReadonlyUint8Array,
@@ -81,6 +87,10 @@ export type Contest = {
   processedMintCount: number;
   /** The Address Lookup Table containing all shared contest accounts (mints, pools, vaults). */
   addressLookupTable: Address;
+  /** Display name e.g. "Germany vs France - QF" */
+  name: string;
+  /** TxLINE fixture ID for match-based scoring */
+  fixtureId: string;
 };
 
 export type ContestArgs = {
@@ -104,10 +114,14 @@ export type ContestArgs = {
   processedMintCount: number;
   /** The Address Lookup Table containing all shared contest accounts (mints, pools, vaults). */
   addressLookupTable: Address;
+  /** Display name e.g. "Germany vs France - QF" */
+  name: string;
+  /** TxLINE fixture ID for match-based scoring */
+  fixtureId: string;
 };
 
 /** Gets the encoder for {@link ContestArgs} account data. */
-export function getContestEncoder(): FixedSizeEncoder<ContestArgs> {
+export function getContestEncoder(): Encoder<ContestArgs> {
   return transformEncoder(
     getStructEncoder([
       ["discriminator", fixEncoderSize(getBytesEncoder(), 8)],
@@ -124,13 +138,15 @@ export function getContestEncoder(): FixedSizeEncoder<ContestArgs> {
       ["totalMintCount", getU8Encoder()],
       ["processedMintCount", getU8Encoder()],
       ["addressLookupTable", getAddressEncoder()],
+      ["name", addEncoderSizePrefix(getUtf8Encoder(), getU32Encoder())],
+      ["fixtureId", addEncoderSizePrefix(getUtf8Encoder(), getU32Encoder())],
     ]),
     (value) => ({ ...value, discriminator: CONTEST_DISCRIMINATOR }),
   );
 }
 
 /** Gets the decoder for {@link Contest} account data. */
-export function getContestDecoder(): FixedSizeDecoder<Contest> {
+export function getContestDecoder(): Decoder<Contest> {
   return getStructDecoder([
     ["discriminator", fixDecoderSize(getBytesDecoder(), 8)],
     ["id", getU64Decoder()],
@@ -146,11 +162,13 @@ export function getContestDecoder(): FixedSizeDecoder<Contest> {
     ["totalMintCount", getU8Decoder()],
     ["processedMintCount", getU8Decoder()],
     ["addressLookupTable", getAddressDecoder()],
+    ["name", addDecoderSizePrefix(getUtf8Decoder(), getU32Decoder())],
+    ["fixtureId", addDecoderSizePrefix(getUtf8Decoder(), getU32Decoder())],
   ]);
 }
 
 /** Gets the codec for {@link Contest} account data. */
-export function getContestCodec(): FixedSizeCodec<ContestArgs, Contest> {
+export function getContestCodec(): Codec<ContestArgs, Contest> {
   return combineCodec(getContestEncoder(), getContestDecoder());
 }
 
@@ -205,8 +223,4 @@ export async function fetchAllMaybeContest(
 ): Promise<MaybeAccount<Contest>[]> {
   const maybeAccounts = await fetchEncodedAccounts(rpc, addresses, config);
   return maybeAccounts.map((maybeAccount) => decodeContest(maybeAccount));
-}
-
-export function getContestSize(): number {
-  return 161;
 }

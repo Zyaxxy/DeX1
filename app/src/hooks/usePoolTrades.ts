@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { connection } from '@/solana/client';
+import { getConnection } from '@/solana/client';
 
 export interface Trade {
   id: string;
@@ -60,7 +60,7 @@ export function usePoolTrades({
   const parseTradeFromTx = useCallback(async (signature: string): Promise<Trade | null> => {
     const { PublicKey } = await import('@solana/web3.js');
 
-    const tx = await connection.getParsedTransaction(signature, {
+    const tx = await getConnection().getParsedTransaction(signature, {
       maxSupportedTransactionVersion: 0,
       commitment: 'confirmed',
     });
@@ -142,7 +142,7 @@ export function usePoolTrades({
       const { PublicKey } = await import('@solana/web3.js');
       const usdcVaultPk = new PublicKey(poolUsdcVault);
 
-      const sigs = await connection.getSignaturesForAddress(usdcVaultPk, {
+      const sigs = await getConnection().getSignaturesForAddress(usdcVaultPk, {
         limit: 20,
       });
 

@@ -32,9 +32,9 @@ import { WalletButton } from '@/solana/components/wallet-button';
 import {
   ROLE_LABELS,
   ROLE_COLORS,
-  rpc,
+  getRpc,
   PROGRAM_ID,
-  connection,
+  getConnection,
   formatUSDC,
   formatTokenAmount,
   USDC_DECIMALS,
@@ -100,7 +100,7 @@ export default function PortfolioPage() {
       const userKey = new PublicKey(publicKey.toString());
 
       const [configPda] = await findConfigPda();
-      const configInfo = await connection.getAccountInfo(new PublicKey(configPda));
+      const configInfo = await getConnection().getAccountInfo(new PublicKey(configPda));
       if (!configInfo) throw new Error('Config not found');
       const configData = decodeAdminConfig({
         address: configPda,
@@ -111,7 +111,7 @@ export default function PortfolioPage() {
 
       // Fetch user USDC balance
       const userUsdcAta = getAssociatedTokenAddressSync(usdcMint, userKey, true);
-      const userUsdcInfo = await connection.getAccountInfo(userUsdcAta);
+      const userUsdcInfo = await getConnection().getAccountInfo(userUsdcAta);
       let usdcBal = BigInt(0);
       if (userUsdcInfo) {
         usdcBal = AccountLayout.decode(userUsdcInfo.data).amount;
@@ -119,7 +119,7 @@ export default function PortfolioPage() {
       setUsdcBalance(Number(usdcBal) / Math.pow(10, USDC_DECIMALS));
 
       // Fetch all athlete pools
-      const response = await rpc.getProgramAccounts(PROGRAM_ID.toBase58() as any, {
+      const response = await getRpc().getProgramAccounts(PROGRAM_ID.toBase58() as any, {
         encoding: 'base64',
         filters: [
           { memcmp: { offset: BigInt(0), encoding: 'base58', bytes: getBase58Decoder().decode(ATHLETE_POOL_DISCRIMINATOR) as any } },
@@ -148,7 +148,7 @@ export default function PortfolioPage() {
         );
       }
 
-      const vaultInfos = await connection.getMultipleAccountsInfo(vaultAddresses);
+      const vaultInfos = await getConnection().getMultipleAccountsInfo(vaultAddresses);
 
       // Build price map
       const priceMap: Record<string, number> = {};
@@ -178,7 +178,7 @@ export default function PortfolioPage() {
         return getAssociatedTokenAddressSync(poolMint, userKey, true);
       });
 
-      const tokenAccountInfos = await connection.getMultipleAccountsInfo(tokenAtaAddresses);
+      const tokenAccountInfos = await getConnection().getMultipleAccountsInfo(tokenAtaAddresses);
 
       for (let i = 0; i < decodedPools.length; i++) {
         const pool = decodedPools[i];
@@ -208,7 +208,7 @@ export default function PortfolioPage() {
       setHoldings(tokenHoldings);
 
       // Fetch user contest entries
-      const contestAccounts = await rpc.getProgramAccounts(PROGRAM_ID.toBase58() as any, {
+      const contestAccounts = await getRpc().getProgramAccounts(PROGRAM_ID.toBase58() as any, {
         encoding: 'base64',
         filters: [
           { memcmp: { offset: BigInt(0), encoding: 'base58', bytes: getBase58Decoder().decode(new Uint8Array([216, 26, 88, 18, 251, 80, 201, 96])) as any } },
@@ -229,7 +229,7 @@ export default function PortfolioPage() {
             contest: contestAddress as any,
             user: publicKey.toBase58() as any,
           });
-          const entryInfo = await connection.getAccountInfo(new PublicKey(entryPda));
+          const entryInfo = await getConnection().getAccountInfo(new PublicKey(entryPda));
 
           if (entryInfo) {
             const decodedEntry = decodeUserEntry({

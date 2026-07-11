@@ -68,6 +68,23 @@ export default function MarketsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<string>('volume');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 20;
+
+  const handleRoleFilterChange = (role: number | null) => {
+    setRoleFilter(role);
+    setCurrentPage(1);
+  };
+
+  const handleSearchChange = (query: string) => {
+    setSearchQuery(query);
+    setCurrentPage(1);
+  };
+
+  const handleSortChange = (sort: string) => {
+    setSortBy(sort);
+    setCurrentPage(1);
+  };
 
   const prevPricesRef = useRef<Map<string, number>>(new Map());
   const [flashMap, setFlashMap] = useState<Map<string, 'up' | 'down' | null>>(new Map());
@@ -107,6 +124,17 @@ export default function MarketsPage() {
     return result;
   }, [pools, roleFilter, searchQuery, sortBy]);
 
+  const paginatedPools = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredPools.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredPools, currentPage]);
+
+  const totalPages = Math.ceil(filteredPools.length / ITEMS_PER_PAGE);
+
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(1);
+  }, [totalPages]);
+
   const activeCount = pools.length;
 
   return (
@@ -142,7 +170,7 @@ export default function MarketsPage() {
               <p className="font-mono text-[11px] tracking-[0.02em] text-[#c6c9ab] mb-4 uppercase">Positions</p>
               <div className="flex flex-col space-y-1">
                 <button
-                  onClick={() => setRoleFilter(null)}
+                  onClick={() => handleRoleFilterChange(null)}
                   className={`flex items-center gap-3 px-3 py-2 rounded-sm text-[13px] font-mono tracking-[0.02em] transition-colors text-left ${
                     roleFilter === null
                       ? 'bg-primary/10 text-primary border-l-2 border-primary'
@@ -155,7 +183,7 @@ export default function MarketsPage() {
                 {ROLE_KEYS.map(key => (
                   <button
                     key={key}
-                    onClick={() => setRoleFilter(key)}
+                    onClick={() => handleRoleFilterChange(key)}
                     className={`flex items-center gap-3 px-3 py-2 rounded-sm text-[13px] font-mono tracking-[0.02em] transition-colors text-left ${
                       roleFilter === key
                         ? 'bg-primary/10 text-primary border-l-2 border-primary'
@@ -200,7 +228,7 @@ export default function MarketsPage() {
                   type="text"
                   placeholder="Search..."
                   value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
+                  onChange={e => handleSearchChange(e.target.value)}
                   className="w-44 bg-surface-container-lowest border border-border text-white font-mono text-[13px] py-1.5 pl-8 pr-3 focus:outline-none focus:border-primary transition-colors placeholder:text-[#c6c9ab]"
                 />
               </div>
@@ -208,7 +236,7 @@ export default function MarketsPage() {
                 <span className="text-[#c6c9ab]">Sort:</span>
                 <select
                   value={sortBy}
-                  onChange={e => setSortBy(e.target.value)}
+                  onChange={e => handleSortChange(e.target.value)}
                   className="bg-surface-container-lowest border border-border text-white py-1.5 pl-2 pr-6 focus:outline-none focus:border-primary cursor-pointer text-[13px]"
                 >
                   {SORT_OPTIONS.map(o => (
@@ -257,8 +285,9 @@ export default function MarketsPage() {
               </p>
             </div>
           ) : (
+            <>
             <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
-              {filteredPools.map((pool, i) => {
+              {paginatedPools.map((pool, i) => {
                 const flash = flashMap.get(pool.mint);
                 const changeColor = pool.priceChange >= 0 ? 'text-primary' : 'text-negative';
                 const changeIcon = pool.priceChange >= 0 ? '+' : '';
@@ -270,7 +299,7 @@ export default function MarketsPage() {
                     key={pool.mint}
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.025, duration: 0.2, ease: 'easeOut' }}
+                    transition={{ delay: Math.min(i * 0.025, 0.3), duration: 0.2, ease: 'easeOut' }}
                   >
                     <Link
                       href={`/markets/${pool.mint}`}
@@ -278,9 +307,13 @@ export default function MarketsPage() {
                     >
                       <div className="flex justify-between items-start mb-3">
                         <div className="flex items-center gap-3 min-w-0">
-                          <div className="w-10 h-10 shrink-0 rounded-sm bg-surface-container-highest flex items-center justify-center font-bold text-base text-white border border-border">
-                            {pool.name[0]}
-                          </div>
+                          {pool.image ? (
+                            <img src={pool.image} alt={pool.name} className="w-10 h-10 shrink-0 rounded-sm object-cover border border-border" />
+                          ) : (
+                            <div className="w-10 h-10 shrink-0 rounded-sm bg-surface-container-highest flex items-center justify-center font-bold text-base text-white border border-border">
+                              {pool.name[0]}
+                            </div>
+                          )}
                           <div className="min-w-0">
                             <div className="font-mono text-[14px] font-[700] text-white leading-[20px] truncate">
                               ${pool.name.length > 8 ? pool.name.replace(/\s+/g, '').toUpperCase().slice(0, 7) : pool.name.replace(/\s+/g, '').toUpperCase()}
@@ -328,6 +361,29 @@ export default function MarketsPage() {
                 );
               })}
             </div>
+
+            {totalPages > 1 && (
+              <div className="flex items-center justify-center gap-2 mt-6">
+                <button
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1.5 font-mono text-[13px] border border-border text-white bg-surface-container-low hover:bg-surface-container disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Prev
+                </button>
+                <span className="font-mono text-[13px] text-[#c6c9ab] px-3">
+                  {currentPage} / {totalPages}
+                </span>
+                <button
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-1.5 font-mono text-[13px] border border-border text-white bg-surface-container-low hover:bg-surface-container disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Next
+                </button>
+              </div>
+            )}
+            </>
           )}
         </main>
 
