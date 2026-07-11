@@ -2,7 +2,7 @@
 
 Dexi is a decentralized fantasy sports protocol built on Solana using the Anchor framework. Users trade athlete tokens on constant-product AMMs, draft lineups, and win USDC prizes.
 
-**Devnet Program ID:** `5RjcrhEhspU8YLLjWN7SJ3TRJkoLZW3LnkrCWCNgTDb3`
+**Devnet Program ID:** `DVhT84igqfyaKaaFDfmjdZGUTNwyoCPQetmVdV5NdTbU`
 
 ## Features
 
