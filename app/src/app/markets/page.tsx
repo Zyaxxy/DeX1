@@ -6,6 +6,7 @@ import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { useRevolvingTitle } from '@/hooks/useRevolvingTitle';
+import { usePageMeta } from '@/hooks/usePageMeta';
 import Image from 'next/image';
 import { TrendingUp, ArrowUp, ArrowDown, Search } from 'lucide-react';
 import Navbar from '@/components/layout/navbar';
@@ -55,6 +56,13 @@ export default function MarketsPage() {
     'Trade Now | DEXI',
     'On-Chain Markets | DEXI',
   ]);
+
+  usePageMeta({
+    title: 'Markets | DEXI',
+    description: 'Browse and trade live athlete token markets on Solana. Real-time prices, volume, and on-chain data.',
+    ogTitle: 'Markets — DEXI',
+    ogDescription: 'Browse and trade live athlete token markets on Solana.',
+  });
 
   const [roleFilter, setRoleFilter] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');

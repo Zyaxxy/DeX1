@@ -1,6 +1,7 @@
 'use client';
 
 import { useRevolvingTitle } from '@/hooks/useRevolvingTitle';
+import { usePageMeta } from '@/hooks/usePageMeta';
 import { useState, useEffect } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
@@ -79,6 +80,13 @@ export default function LaunchPage() {
     'Create Athlete Token | DEXI',
     'New Market | DEXI',
   ]);
+
+  usePageMeta({
+    title: 'Launch Token | DEXI',
+    description: 'Create and launch new athlete tokens with automated bonding curves on Solana.',
+    ogTitle: 'Launch Token — DEXI',
+    ogDescription: 'Create and launch new athlete tokens on Solana.',
+  });
   
   const isAdmin = connected && publicKey?.toBase58() === ADMIN_WALLET_ADDRESS;
   

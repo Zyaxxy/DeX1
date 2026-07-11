@@ -1,6 +1,7 @@
 'use client';
 
 import { useRevolvingTitle } from '@/hooks/useRevolvingTitle';
+import { usePageMeta } from '@/hooks/usePageMeta';
 import dynamic from 'next/dynamic';
 import { useState, useEffect, useMemo } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
@@ -70,6 +71,13 @@ function AdminPage() {
     'Dashboard | DEXI',
     'Manage Protocol | DEXI',
   ]);
+
+  usePageMeta({
+    title: 'Admin | DEXI',
+    description: 'DEXI protocol administration — manage athlete pools, contests, and protocol configuration.',
+    ogTitle: 'Admin — DEXI',
+    ogDescription: 'DEXI protocol administration.',
+  });
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
 
@@ -552,7 +560,7 @@ function AdminPage() {
               <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center">
                 <span className="text-xl font-bold text-primary-foreground">D</span>
               </div>
-              <h1 className="text-2xl font-bold tracking-tight">Dexi</h1>
+              <span className="text-2xl font-bold tracking-tight">Dexi</span>
             </a>
             <WalletButton />
           </div>
@@ -615,7 +623,7 @@ function AdminPage() {
             <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center">
               <span className="text-xl font-bold text-primary-foreground">D</span>
             </div>
-            <h1 className="text-2xl font-bold tracking-tight">Dexi</h1>
+            <span className="text-2xl font-bold tracking-tight">Dexi</span>
           </a>
           <nav className="hidden md:flex items-center gap-6">
             <a href="/markets" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">Markets</a>
@@ -630,7 +638,7 @@ function AdminPage() {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-3xl font-bold tracking-tight font-heading">Admin Panel</h2>
+              <h1 className="text-3xl font-bold tracking-tight font-heading">Admin Panel</h1>
               <p className="text-muted-foreground text-sm">Manage pools, contests, tokens, and protocol settings</p>
             </div>
             <TabsList>

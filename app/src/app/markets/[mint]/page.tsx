@@ -6,6 +6,7 @@ import { useParams } from 'next/navigation';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import { useRevolvingTitle } from '@/hooks/useRevolvingTitle';
+import { usePageMeta } from '@/hooks/usePageMeta';
 import { Copy, Check, BarChart3, Clock } from 'lucide-react';
 
 import Navbar from '@/components/layout/navbar';
@@ -53,6 +54,18 @@ function PoolDetailContent() {
   }, [pool?.name]);
 
   useRevolvingTitle(revolvingTitles);
+
+  const meta = useMemo(() => {
+    const name = pool?.name ? pool.name.replace(/\s+/g, '').toUpperCase() : 'Market';
+    return {
+      title: `${name} | Markets | DEXI`,
+      description: `Trade ${name} athlete tokens on Solana. Live prices, charts, and on-chain data.`,
+      ogTitle: `${name} — Markets | DEXI`,
+      ogDescription: `Trade ${name} tokens on Solana.`,
+    };
+  }, [pool?.name]);
+
+  usePageMeta(meta);
   const [buyAmount, setBuyAmount] = useState('');
   const [sellAmount, setSellAmount] = useState('');
   const [loading, setLoading] = useState(false);

@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import { useRevolvingTitle } from '@/hooks/useRevolvingTitle';
+import { usePageMeta } from '@/hooks/usePageMeta';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
@@ -74,6 +75,13 @@ export default function PortfolioPage() {
     'Your Holdings | DEXI',
     'Manage Positions | DEXI',
   ]);
+
+  usePageMeta({
+    title: 'Portfolio | DEXI',
+    description: 'Manage your athlete token portfolio, track P&L, and view your fantasy contest positions on Solana.',
+    ogTitle: 'Portfolio — DEXI',
+    ogDescription: 'Manage your athlete token portfolio on Solana.',
+  });
   const [usdcBalance, setUsdcBalance] = useState<number>(0);
   const [holdings, setHoldings] = useState<TokenHolding[]>([]);
   const [entries, setEntries] = useState<ContestEntry[]>([]);
@@ -352,7 +360,7 @@ export default function PortfolioPage() {
           expandedWidth="w-64"
           header={
             <>
-              <h2 className="text-[24px] font-[600] font-heading text-white tracking-tighter">Portfolio</h2>
+              <h1 className="text-[24px] font-[600] font-heading text-white tracking-tighter">Portfolio</h1>
               <p className="font-mono text-[11px] tracking-[0.02em] text-[#c6c9ab]">Your Assets &amp; Activity</p>
             </>
           }

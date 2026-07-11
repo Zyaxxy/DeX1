@@ -9,6 +9,7 @@ import { PublicKey, TransactionMessage, VersionedTransaction, TransactionInstruc
 import { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { findConfigPda, findEntryPda, findContestPda, getEnterContestInstructionDataEncoder } from '@dexi/sdk';
 import { useRevolvingTitle } from '@/hooks/useRevolvingTitle';
+import { usePageMeta } from '@/hooks/usePageMeta';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Trophy, Users, Search, X, Plus, ChevronRight, Wallet, Check,
@@ -100,6 +101,15 @@ function ContestDetailContent() {
   ], [contest, contestId]);
 
   useRevolvingTitle(revolvingTitles);
+
+  const meta = useMemo(() => ({
+    title: `Contest #${contestId} | DEXI`,
+    description: `View and enter fantasy contest #${contestId} on DEXI. Draft athletes and compete for USDC prizes.`,
+    ogTitle: `Contest #${contestId} — DEXI`,
+    ogDescription: `Enter fantasy contest #${contestId} on DEXI.`,
+  }), [contestId]);
+
+  usePageMeta(meta);
 
   useEffect(() => {
     async function fetchAthletes() {

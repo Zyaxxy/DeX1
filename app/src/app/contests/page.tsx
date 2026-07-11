@@ -1,6 +1,7 @@
 'use client';
 
 import { useRevolvingTitle } from '@/hooks/useRevolvingTitle';
+import { usePageMeta } from '@/hooks/usePageMeta';
 import dynamic from 'next/dynamic';
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
@@ -74,6 +75,13 @@ function ContestsPage() {
     'Fantasy Leagues | DEXI',
     'Compete to Win | DEXI',
   ]);
+
+  usePageMeta({
+    title: 'Contests | DEXI',
+    description: 'Enter fantasy sports contests, draft athlete lineups, and compete for USDC prizes on Solana.',
+    ogTitle: 'Contests — DEXI',
+    ogDescription: 'Enter fantasy sports contests on Solana.',
+  });
   const [leagueFilter, setLeagueFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');

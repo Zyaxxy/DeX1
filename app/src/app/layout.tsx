@@ -21,15 +21,54 @@ const jetbrainsMono = JetBrains_Mono({
   weight: ["400", "500", "700"],
 });
 
+const BASE_URL = "https://dexi.xyz";
+
 export const metadata: Metadata = {
+  metadataBase: new URL(BASE_URL),
   title: {
     template: "%s | DEXI",
-    default: "DEXI : Fantasy Sports Trading",
+    default: "DEXI : Fantasy Sports Trading on Solana",
   },
   description: "Trade athlete tokens, compete in fantasy contests, and win USDC prizes instantly on Solana.",
+  keywords: ["fantasy sports", "Solana", "athlete tokens", "DeFi", "trading", "crypto", "sports betting", "USDC"],
+  authors: [{ name: "DEXI Protocol" }],
+  creator: "DEXI Protocol",
+  publisher: "DEXI Protocol",
+  robots: {
+    index: true,
+    follow: true,
+  },
+  alternates: {
+    canonical: BASE_URL,
+  },
   icons: {
     icon: "/DEXI.svg",
+    apple: "/DEXI.svg",
   },
+  openGraph: {
+    type: "website",
+    locale: "en_US",
+    url: BASE_URL,
+    siteName: "DEXI",
+    title: "DEXI — Fantasy Sports Trading on Solana",
+    description: "Trade athlete tokens, compete in fantasy contests, and win USDC prizes instantly on Solana.",
+    images: [
+      {
+        url: "/DEXI.svg",
+        width: 100,
+        height: 100,
+        alt: "DEXI Logo",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "DEXI — Fantasy Sports Trading on Solana",
+    description: "Trade athlete tokens, compete in fantasy contests, and win USDC prizes instantly on Solana.",
+    images: ["/DEXI.svg"],
+    creator: "@dexiprotocol",
+  },
+  category: "finance",
 };
 
 export default function RootLayout({
