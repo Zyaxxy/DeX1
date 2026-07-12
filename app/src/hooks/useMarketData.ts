@@ -9,7 +9,7 @@ import { getAssociatedTokenAddressSync, AccountLayout } from '@solana/spl-token'
 import { Metadata } from '@metaplex-foundation/mpl-token-metadata';
 
 const MPL_PROGRAM_ID = new PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s");
-const POLL_INTERVAL = 15000;
+const POLL_INTERVAL = 30000;
 const MAX_PRICE_HISTORY = 60;
 
 interface PoolRaw {
@@ -55,6 +55,7 @@ export function useMarketData() {
   const lastSigsRef = useRef<Map<string, string>>(new Map());
   const activityCacheRef = useRef<TradeActivity[]>([]);
   const activityIdxRef = useRef(0);
+  const metadataCacheRef = useRef<Map<string, { name: string; role: number; image?: string }>>(new Map());
   const [initialized, setInitialized] = useState(false);
 
   const fetchPools = useCallback(async () => {
@@ -129,33 +130,56 @@ export function useMarketData() {
         };
       });
 
-      const poolsWithImages: PoolRaw[] = await Promise.all(
-        formatted.map(async (p) => {
-          try {
-            const [metadataPda] = PublicKey.findProgramAddressSync(
-              [Buffer.from("metadata"), MPL_PROGRAM_ID.toBuffer(), new PublicKey(p.mint).toBuffer()],
-              MPL_PROGRAM_ID
-            );
-            const metadataInfo = await getConnection().getAccountInfo(metadataPda);
-            if (metadataInfo?.data) {
+      const metadataCache = metadataCacheRef.current;
+      const uncached = formatted.filter(p => !metadataCache.has(p.mint) || !metadataCache.get(p.mint)!.image);
+
+      if (uncached.length > 0) {
+        const metadataPdas = uncached.map(p =>
+          PublicKey.findProgramAddressSync(
+            [Buffer.from("metadata"), MPL_PROGRAM_ID.toBuffer(), new PublicKey(p.mint).toBuffer()],
+            MPL_PROGRAM_ID
+          )[0]
+        );
+
+        const metadataInfos = await getConnection().getMultipleAccountsInfo(metadataPdas);
+
+        const uriFetchTasks: Promise<void>[] = [];
+        for (let i = 0; i < uncached.length; i++) {
+          const p = uncached[i];
+          const metadataInfo = metadataInfos[i];
+          if (metadataInfo?.data) {
+            try {
               const metadata = Metadata.deserialize(metadataInfo.data)[0];
               const uri = metadata.data.uri?.trim();
               if (uri) {
-                try {
-                  const response = await fetch(uri);
-                  const metadataJson = await response.json();
-                  return { ...p, image: metadataJson.image || undefined };
-                } catch {
-                  return { ...p, image: uri };
-                }
+                uriFetchTasks.push(
+                  fetch(uri)
+                    .then(r => r.json())
+                    .then(json => {
+                      metadataCache.set(p.mint, { name: p.name, role: p.role, image: json.image || uri });
+                    })
+                    .catch(() => {
+                      metadataCache.set(p.mint, { name: p.name, role: p.role, image: uri });
+                    })
+                );
+              } else {
+                metadataCache.set(p.mint, { name: p.name, role: p.role });
               }
+            } catch {
+              metadataCache.set(p.mint, { name: p.name, role: p.role });
             }
-            return p;
-          } catch {
-            return p;
+          } else {
+            metadataCache.set(p.mint, { name: p.name, role: p.role });
           }
-        })
-      );
+        }
+
+        await Promise.all(uriFetchTasks);
+      }
+
+      const poolsWithImages: PoolRaw[] = formatted.map(p => {
+        const cached = metadataCache.get(p.mint);
+        return cached?.image ? { ...p, image: cached.image } : p;
+      });
 
       const histories = priceHistoriesRef.current;
       const firstPrices = firstPricesRef.current;
@@ -280,7 +304,7 @@ export function useMarketData() {
   useEffect(() => {
     if (!initialized) return;
     fetchActivity();
-    const interval = setInterval(fetchActivity, 8000);
+    const interval = setInterval(fetchActivity, 15000);
     return () => clearInterval(interval);
   }, [initialized, fetchActivity]);
 

@@ -57,6 +57,7 @@ import {
   getProcessEntryMintInstructionAsync,
   getSellInstructionAsync,
   getSettleContestInstructionAsync,
+  getUpdateConfigInstructionAsync,
   getUpdatePoolInstructionAsync,
   parseBuyInstruction,
   parseClaimRewardInstruction,
@@ -68,6 +69,7 @@ import {
   parseProcessEntryMintInstruction,
   parseSellInstruction,
   parseSettleContestInstruction,
+  parseUpdateConfigInstruction,
   parseUpdatePoolInstruction,
   type BuyAsyncInput,
   type ClaimRewardAsyncInput,
@@ -86,10 +88,12 @@ import {
   type ParsedProcessEntryMintInstruction,
   type ParsedSellInstruction,
   type ParsedSettleContestInstruction,
+  type ParsedUpdateConfigInstruction,
   type ParsedUpdatePoolInstruction,
   type ProcessEntryMintAsyncInput,
   type SellAsyncInput,
   type SettleContestAsyncInput,
+  type UpdateConfigAsyncInput,
   type UpdatePoolAsyncInput,
 } from "../instructions";
 import {
@@ -100,7 +104,7 @@ import {
 } from "../pdas";
 
 export const DEXI_PROGRAM_ADDRESS =
-  "DVhT84igqfyaKaaFDfmjdZGUTNwyoCPQetmVdV5NdTbU" as Address<"DVhT84igqfyaKaaFDfmjdZGUTNwyoCPQetmVdV5NdTbU">;
+  "HLqcxyy9DrVH7DJ2NqTza8Vq6GWB4aUuUSjFWdq5EAmt" as Address<"HLqcxyy9DrVH7DJ2NqTza8Vq6GWB4aUuUSjFWdq5EAmt">;
 
 export enum DexiAccount {
   AdminConfig,
@@ -174,6 +178,7 @@ export enum DexiInstruction {
   ProcessEntryMint,
   Sell,
   SettleContest,
+  UpdateConfig,
   UpdatePool,
 }
 
@@ -295,6 +300,17 @@ export function identifyDexiInstruction(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([29, 158, 252, 191, 10, 83, 219, 99]),
+      ),
+      0,
+    )
+  ) {
+    return DexiInstruction.UpdateConfig;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
         new Uint8Array([239, 214, 170, 78, 36, 35, 30, 34]),
       ),
       0,
@@ -309,7 +325,7 @@ export function identifyDexiInstruction(
 }
 
 export type ParsedDexiInstruction<
-  TProgram extends string = "DVhT84igqfyaKaaFDfmjdZGUTNwyoCPQetmVdV5NdTbU",
+  TProgram extends string = "HLqcxyy9DrVH7DJ2NqTza8Vq6GWB4aUuUSjFWdq5EAmt",
 > =
   | ({ instructionType: DexiInstruction.Buy } & ParsedBuyInstruction<TProgram>)
   | ({
@@ -339,6 +355,9 @@ export type ParsedDexiInstruction<
   | ({
       instructionType: DexiInstruction.SettleContest;
     } & ParsedSettleContestInstruction<TProgram>)
+  | ({
+      instructionType: DexiInstruction.UpdateConfig;
+    } & ParsedUpdateConfigInstruction<TProgram>)
   | ({
       instructionType: DexiInstruction.UpdatePool;
     } & ParsedUpdatePoolInstruction<TProgram>);
@@ -418,6 +437,13 @@ export function parseDexiInstruction<TProgram extends string>(
         ...parseSettleContestInstruction(instruction),
       };
     }
+    case DexiInstruction.UpdateConfig: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: DexiInstruction.UpdateConfig,
+        ...parseUpdateConfigInstruction(instruction),
+      };
+    }
     case DexiInstruction.UpdatePool: {
       assertIsInstructionWithAccounts(instruction);
       return {
@@ -488,6 +514,10 @@ export type DexiPluginInstructions = {
   settleContest: (
     input: SettleContestAsyncInput,
   ) => ReturnType<typeof getSettleContestInstructionAsync> &
+    SelfPlanAndSendFunctions;
+  updateConfig: (
+    input: UpdateConfigAsyncInput,
+  ) => ReturnType<typeof getUpdateConfigInstructionAsync> &
     SelfPlanAndSendFunctions;
   updatePool: (
     input: UpdatePoolAsyncInput,
@@ -564,6 +594,11 @@ export function dexiProgram() {
             addSelfPlanAndSendFunctions(
               client,
               getSettleContestInstructionAsync(input),
+            ),
+          updateConfig: (input) =>
+            addSelfPlanAndSendFunctions(
+              client,
+              getUpdateConfigInstructionAsync(input),
             ),
           updatePool: (input) =>
             addSelfPlanAndSendFunctions(

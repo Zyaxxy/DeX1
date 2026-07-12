@@ -16,4 +16,5 @@ export * from "./lockContest";
 export * from "./processEntryMint";
 export * from "./sell";
 export * from "./settleContest";
+export * from "./updateConfig";
 export * from "./updatePool";

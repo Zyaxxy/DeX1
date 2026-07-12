@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Inter, Archivo_Narrow, JetBrains_Mono } from "next/font/google";
 import { Toaster } from "sonner";
 import "./globals.css";
-import { Providers } from "@/solana/providers/providers";
 
 const inter = Inter({
   variable: "--font-sans",
@@ -79,10 +78,8 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${inter.variable} ${archivoNarrow.variable} ${jetbrainsMono.variable} dark antialiased`}>
       <body className="min-h-screen bg-background text-foreground flex flex-col font-sans">
-        <Providers>
-          {children}
-          <Toaster position="bottom-right" theme="dark" />
-        </Providers>
+        {children}
+        <Toaster position="bottom-right" theme="dark" />
       </body>
     </html>
   );

@@ -1,14 +1,7 @@
-'use client';
-
 import Link from 'next/link';
-import { useWallet } from '@solana/wallet-adapter-react';
-import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import ShaderBackground from './shader-background';
 
 export default function HeroSection() {
-  const { connected } = useWallet();
-  const { setVisible } = useWalletModal();
-
   return (
     <section className="relative w-full h-[80vh] min-h-[600px] flex items-center justify-center overflow-hidden">
       <ShaderBackground />
@@ -28,21 +21,12 @@ export default function HeroSection() {
         </p>
 
         <div className="flex flex-wrap gap-4">
-          {connected ? (
-            <Link
-              href="/markets"
-              className="bg-primary text-primary-foreground font-mono text-[14px] leading-[20px] font-[700] px-8 py-4 hover:opacity-90 transition-opacity uppercase tracking-wider"
-            >
-              Launch App
-            </Link>
-          ) : (
-            <button
-              onClick={() => setVisible(true)}
-              className="bg-primary text-primary-foreground font-mono text-[14px] leading-[20px] font-[700] px-8 py-4 hover:opacity-90 transition-opacity uppercase tracking-wider"
-            >
-              Launch App
-            </button>
-          )}
+          <Link
+            href="/markets"
+            className="bg-primary text-primary-foreground font-mono text-[14px] leading-[20px] font-[700] px-8 py-4 hover:opacity-90 transition-opacity uppercase tracking-wider"
+          >
+            Launch App
+          </Link>
           <Link
             href="/markets"
             className="border border-border text-white font-mono text-[14px] leading-[20px] font-[500] px-8 py-4 hover:bg-[#1c1f2a] transition-colors uppercase tracking-wider"

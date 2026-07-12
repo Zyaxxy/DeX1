@@ -7,10 +7,10 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-dexi = "DVhT84igqfyaKaaFDfmjdZGUTNwyoCPQetmVdV5NdTbU"
+dexi = "HLqcxyy9DrVH7DJ2NqTza8Vq6GWB4aUuUSjFWdq5EAmt"
 
 [provider]
-cluster = "devnet"
+cluster = "${RPC_URL}"
 wallet = "~/.config/solana/id.json"
 
 [scripts]

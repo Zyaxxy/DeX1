@@ -156,6 +156,7 @@ export default function LaunchPage() {
       toast.loading('Uploading image...', { id: 'launch' });
       const imageTags = [{ name: "Content-Type", value: imageFile.type }];
       const imageReceipt = await irys.uploadFile(imageFile, { tags: imageTags });
+      toast.dismiss('launch');
       const imageUrl = `${irysGateway}/${imageReceipt.id}`;
 
       const metadataObj = {
@@ -168,6 +169,7 @@ export default function LaunchPage() {
       const metadataTags = [{ name: "Content-Type", value: "application/json" }];
       toast.loading('Uploading metadata...', { id: 'launch' });
       const metadataReceipt = await irys.upload(JSON.stringify(metadataObj), { tags: metadataTags });
+      toast.dismiss('launch');
       const metadataUrl = `${irysGateway}/${metadataReceipt.id}`;
 
       toast.loading('Creating token and pool...', { id: 'launch' });
@@ -335,7 +337,7 @@ export default function LaunchPage() {
         mintUsdcToPoolIx
       ];
 
-      const { blockhash } = await getConnection().getLatestBlockhash();
+      const { context: { slot }, value: { blockhash } } = await getConnection().getLatestBlockhashAndContext();
       const msg = new TransactionMessage({
         payerKey: adminKey,
         recentBlockhash: blockhash,
@@ -346,7 +348,9 @@ export default function LaunchPage() {
       tx.sign([mintKeypair]);
       
       toast.loading('Please approve the transaction...', { id: 'launch' });
-      const sig = await sendTransaction(tx, getConnection());
+      const sig = await sendTransaction(tx, getConnection(), {
+        minContextSlot: slot,
+      });
       await getConnection().confirmTransaction(sig, 'confirmed');
 
       toast.success('Token launched successfully!', { id: 'launch' });

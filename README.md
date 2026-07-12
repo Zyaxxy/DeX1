@@ -2,7 +2,9 @@
 
 Dexi is a decentralized fantasy sports protocol built on Solana using the Anchor framework. Users trade athlete tokens on constant-product AMMs, draft lineups, and win USDC prizes.
 
-**Devnet Program ID:** `DVhT84igqfyaKaaFDfmjdZGUTNwyoCPQetmVdV5NdTbU`
+**Devnet Program ID:** `HLqcxyy9DrVH7DJ2NqTza8Vq6GWB4aUuUSjFWdq5EAmt`
+
+**Devnet USDC Mint:** `9Y27Cm2eWZ1H6KzMss5Py4BhRPBMYKCssEoWBp2MunEP` (admin-controlled mint authority)
 
 ## Features
 
@@ -47,6 +49,7 @@ Dexi is a decentralized fantasy sports protocol built on Solana using the Anchor
 | Instruction | Caller | Description |
 |-------------|--------|-------------|
 | `initialize` | Admin | Create global admin config |
+| `update_config` | Admin | Update USDC mint, swap fee, keeper, treasury |
 | `create_pool` | Admin | Init athlete pool + vaults |
 | `update_pool` | Admin | Rename/disable/enable pool |
 | `buy` | User | USDC → athlete tokens (CPMM) |

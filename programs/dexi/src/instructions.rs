@@ -12,3 +12,5 @@ pub mod settle_contest;
 pub use settle_contest::*;
 pub mod claim_reward;
 pub use claim_reward::*;
+pub mod update_config;
+pub use update_config::*;

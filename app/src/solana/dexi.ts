@@ -7,7 +7,7 @@ export const USDC_DECIMALS = 6;
 
 export const CLUSTER = process.env.NEXT_PUBLIC_CLUSTER || 'devnet';
 export const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 
-  (CLUSTER === 'devnet' ? 'https://devnet.helius-rpc.com/?api-key=' : 'http://localhost:3000');
+  (CLUSTER === 'devnet' ? 'https://api.devnet.solana.com' : 'http://localhost:3000');
 
 export const ROLE_REQUIREMENTS = {
   GK: 1,

@@ -22,7 +22,9 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 import { getConnection, ROLE_LABELS, ROLE_COLORS, formatTokenAmount, formatUSDC, getRpc } from '@/solana/client';
 import { toast } from 'sonner';
-import { decodeAthletePool, findPoolPda } from '@dexi/sdk';
+import { PublicKey, TransactionMessage, VersionedTransaction, TransactionInstruction } from '@solana/web3.js';
+import { getAssociatedTokenAddressSync, createAssociatedTokenAccountInstruction, AccountLayout } from '@solana/spl-token';
+import { decodeAthletePool, findPoolPda, findConfigPda, decodeAdminConfig, getBuyInstruction, getSellInstruction } from '@dexi/sdk';
 import { usePoolTrades } from '@/hooks/usePoolTrades';
 
 interface PoolInfo {
@@ -41,7 +43,7 @@ interface PoolInfo {
 function PoolDetailContent() {
   const params = useParams();
   const mintParam = params?.mint as string;
-  const { connected, publicKey, sendTransaction } = useWallet();
+  const { connected, publicKey, sendTransaction, signTransaction } = useWallet();
   const { setVisible } = useWalletModal();
   const [pool, setPool] = useState<PoolInfo | null>(null);
 
@@ -77,6 +79,7 @@ function PoolDetailContent() {
   const [poolUsdcVault, setPoolUsdcVault] = useState<string | null>(null);
   const [poolTokenVault, setPoolTokenVault] = useState<string | null>(null);
   const [timeframe, setTimeframe] = useState<'1H' | '4H' | '1D' | '1W' | '1M'>('1D');
+  const [swapFeeBps, setSwapFeeBps] = useState(30);
 
   const fetchPool = useCallback(async () => {
     if (!mintParam) return;
@@ -91,10 +94,6 @@ function PoolDetailContent() {
         data: new Uint8Array(Buffer.from(response.value.data[0], response.value.data[1] as any)),
         exists: true,
       } as any).data;
-
-      const { PublicKey } = await import('@solana/web3.js');
-      const { getAssociatedTokenAddressSync, AccountLayout } = await import('@solana/spl-token');
-      const { findConfigPda, decodeAdminConfig } = await import('@dexi/sdk');
 
       const [configPda] = await findConfigPda();
       const configInfo = await getConnection().getAccountInfo(new PublicKey(configPda));
@@ -132,6 +131,8 @@ function PoolDetailContent() {
         }
       }
 
+      setSwapFeeBps(configData.swapFeeBps);
+
       setPool({
         mint: decoded.mint.toString(),
         name: decoded.name,
@@ -162,10 +163,6 @@ function PoolDetailContent() {
     async function fetchBalances() {
       if (!connected || !publicKey) return;
       try {
-        const { PublicKey } = await import('@solana/web3.js');
-        const { getAssociatedTokenAddressSync, AccountLayout } = await import('@solana/spl-token');
-        const { findConfigPda, decodeAdminConfig } = await import('@dexi/sdk');
-
         const [configPda] = await findConfigPda();
         const configInfo = await getConnection().getAccountInfo(new PublicKey(configPda));
         if (!configInfo) throw new Error("Config not found");
@@ -214,7 +211,7 @@ function PoolDetailContent() {
 
   const handleBuy = async () => {
     if (!connected || !publicKey || !sendTransaction || !pool) {
-      toast.error('Please connect your wallet');
+      setVisible(true);
       return;
     }
 
@@ -231,15 +228,10 @@ function PoolDetailContent() {
 
     setLoading(true);
     try {
-      const { getAssociatedTokenAddressSync } = await import('@solana/spl-token');
-      const { TransactionMessage, VersionedTransaction, PublicKey } = await import('@solana/web3.js');
-      const { getBuyInstruction, findConfigPda, findPoolPda } = await import('@dexi/sdk');
-
       const [configPda] = await findConfigPda();
       const userKey = new PublicKey(publicKey.toString());
       const configInfo = await getConnection().getAccountInfo(new PublicKey(configPda));
       if (!configInfo) throw new Error("Config not found");
-      const { decodeAdminConfig } = await import('@dexi/sdk');
       const configData = decodeAdminConfig({
         address: configPda,
         data: new Uint8Array(configInfo.data),
@@ -256,6 +248,34 @@ function PoolDetailContent() {
       const poolUsdcVault = getAssociatedTokenAddressSync(usdcMintKey, poolKey, true);
 
       const usdcAmount = BigInt(Math.floor(amount * (10 ** 6)));
+      const swapFeeBpsVal = configData.swapFeeBps;
+
+      // Pre-check: pool must have tokens to sell
+      const poolTok = pool.poolTokens;
+      const poolUsd = pool.poolUsdc;
+      if (!poolTok || poolTok <= BigInt(0)) {
+        toast.error('Pool has no liquidity');
+        setLoading(false);
+        return;
+      }
+      if (!poolUsd || poolUsd <= BigInt(0)) {
+        toast.error('Pool has no USDC reserves');
+        setLoading(false);
+        return;
+      }
+      const fee = usdcAmount * BigInt(swapFeeBpsVal) / BigInt(10000);
+      const dyAfterFee = usdcAmount - fee;
+      if (dyAfterFee <= BigInt(0)) {
+        toast.error('Trade amount too small after fees');
+        setLoading(false);
+        return;
+      }
+      const outputTokens = (poolTok * dyAfterFee) / (poolUsd + dyAfterFee);
+      if (outputTokens <= BigInt(0)) {
+        toast.error('Trade amount too small, try increasing the amount');
+        setLoading(false);
+        return;
+      }
 
       const buyIx = getBuyInstruction({
         config: configPda.toString() as any,
@@ -271,9 +291,6 @@ function PoolDetailContent() {
         associatedTokenProgram: 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL' as any,
         systemProgram: '11111111111111111111111111111111' as any,
       });
-
-      const { TransactionInstruction } = await import('@solana/web3.js');
-      const { createAssociatedTokenAccountInstruction } = await import('@solana/spl-token');
 
       const instructions: any[] = [];
 
@@ -302,7 +319,7 @@ function PoolDetailContent() {
       });
       instructions.push(instruction);
 
-      const { blockhash } = await getConnection().getLatestBlockhash();
+      const { context: { slot }, value: { blockhash } } = await getConnection().getLatestBlockhashAndContext();
       const messageV0 = new TransactionMessage({
         payerKey: userKey,
         recentBlockhash: blockhash,
@@ -317,16 +334,23 @@ function PoolDetailContent() {
         });
         if (simResult.value.err) {
           console.error('Simulation error:', simResult.value.logs);
-          throw new Error(`Simulation failed: ${JSON.stringify(simResult.value.err)}`);
+          const errorLogs = simResult.value.logs || [];
+          const anchorLog = errorLogs.find((log: string) => log.includes('AnchorError'));
+          const msg = anchorLog
+            ? anchorLog.split('Error Message: ')[1]?.split('.')[0] || 'Insufficient liquidity'
+            : 'Transaction simulation failed';
+          throw new Error(msg);
         }
       } catch (simError) {
         console.error('Simulation failed:', simError);
-        toast.error('Transaction would fail. Check console for details.');
+        toast.error(simError instanceof Error ? simError.message : 'Transaction would fail');
         setLoading(false);
         return;
       }
 
-      const signature = await sendTransaction(transaction, getConnection());
+      const signature = await sendTransaction(transaction, getConnection(), {
+        minContextSlot: slot,
+      });
       await getConnection().confirmTransaction(signature, 'confirmed');
 
       toast.success(`Bought ${amount} USDC worth of ${pool.name}!`);
@@ -335,7 +359,11 @@ function PoolDetailContent() {
       poolTrades.refresh();
     } catch (error) {
       console.error(error);
-      toast.error('Transaction failed');
+      if (error instanceof Error && error.name === 'WalletSendTransactionError') {
+        toast.error('Transaction cancelled or timed out. Please try again.');
+      } else {
+        toast.error(error instanceof Error ? error.message : 'Transaction failed');
+      }
     } finally {
       setLoading(false);
     }
@@ -343,7 +371,7 @@ function PoolDetailContent() {
 
   const handleSell = async () => {
     if (!connected || !publicKey || !sendTransaction || !pool) {
-      toast.error('Please connect your wallet');
+      setVisible(true);
       return;
     }
 
@@ -360,15 +388,10 @@ function PoolDetailContent() {
 
     setLoading(true);
     try {
-      const { getAssociatedTokenAddressSync } = await import('@solana/spl-token');
-      const { TransactionMessage, VersionedTransaction, PublicKey } = await import('@solana/web3.js');
-      const { getSellInstruction, findConfigPda, findPoolPda } = await import('@dexi/sdk');
-
       const [configPda] = await findConfigPda();
       const userKey = new PublicKey(publicKey.toString());
       const configInfo = await getConnection().getAccountInfo(new PublicKey(configPda));
       if (!configInfo) throw new Error("Config not found");
-      const { decodeAdminConfig } = await import('@dexi/sdk');
       const configData = decodeAdminConfig({
         address: configPda,
         data: new Uint8Array(configInfo.data),
@@ -385,6 +408,34 @@ function PoolDetailContent() {
       const poolUsdcVault = getAssociatedTokenAddressSync(usdcMintKey, poolKey, true);
 
       const tokenAmount = BigInt(Math.floor(amount * 1_000_000));
+      const swapFeeBpsVal = configData.swapFeeBps;
+
+      // Pre-check: pool must have USDC to pay out
+      const poolUsd = pool.poolUsdc;
+      const poolTok = pool.poolTokens;
+      if (!poolUsd || poolUsd <= BigInt(0)) {
+        toast.error('Pool has no USDC liquidity');
+        setLoading(false);
+        return;
+      }
+      if (!poolTok || poolTok <= BigInt(0)) {
+        toast.error('Pool has no token reserves');
+        setLoading(false);
+        return;
+      }
+      const fee = tokenAmount * BigInt(swapFeeBpsVal) / BigInt(10000);
+      const dxAfterFee = tokenAmount - fee;
+      if (dxAfterFee <= BigInt(0)) {
+        toast.error('Trade amount too small after fees');
+        setLoading(false);
+        return;
+      }
+      const outputUsdc = (poolUsd * dxAfterFee) / (poolTok + dxAfterFee);
+      if (outputUsdc <= BigInt(0)) {
+        toast.error('Trade amount too small, try increasing the amount');
+        setLoading(false);
+        return;
+      }
 
       const sellIx = getSellInstruction({
         config: configPda.toString() as any,
@@ -400,9 +451,6 @@ function PoolDetailContent() {
         associatedTokenProgram: 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL' as any,
         systemProgram: '11111111111111111111111111111111' as any,
       });
-
-      const { TransactionInstruction } = await import('@solana/web3.js');
-      const { createAssociatedTokenAccountInstruction } = await import('@solana/spl-token');
 
       const instructions: any[] = [];
 
@@ -431,7 +479,7 @@ function PoolDetailContent() {
       });
       instructions.push(instruction);
 
-      const { blockhash } = await getConnection().getLatestBlockhash();
+      const { context: { slot }, value: { blockhash } } = await getConnection().getLatestBlockhashAndContext();
       const messageV0 = new TransactionMessage({
         payerKey: userKey,
         recentBlockhash: blockhash,
@@ -446,16 +494,23 @@ function PoolDetailContent() {
         });
         if (simResult.value.err) {
           console.error('Simulation error:', simResult.value.logs);
-          throw new Error(`Simulation failed: ${JSON.stringify(simResult.value.err)}`);
+          const errorLogs = simResult.value.logs || [];
+          const anchorLog = errorLogs.find((log: string) => log.includes('AnchorError'));
+          const msg = anchorLog
+            ? anchorLog.split('Error Message: ')[1]?.split('.')[0] || 'Insufficient liquidity'
+            : 'Transaction simulation failed';
+          throw new Error(msg);
         }
       } catch (simError) {
         console.error('Simulation failed:', simError);
-        toast.error('Transaction would fail. Check console for details.');
+        toast.error(simError instanceof Error ? simError.message : 'Transaction would fail');
         setLoading(false);
         return;
       }
 
-      const signature = await sendTransaction(transaction, getConnection());
+      const signature = await sendTransaction(transaction, getConnection(), {
+        minContextSlot: slot,
+      });
       await getConnection().confirmTransaction(signature, 'confirmed');
 
       toast.success(`Sold ${amount} ${pool.name}!`);
@@ -464,20 +519,36 @@ function PoolDetailContent() {
       poolTrades.refresh();
     } catch (error) {
       console.error(error);
-      toast.error('Transaction failed');
+      if (error instanceof Error && error.name === 'WalletSendTransactionError') {
+        toast.error('Transaction cancelled or timed out. Please try again.');
+      } else {
+        toast.error(error instanceof Error ? error.message : 'Transaction failed');
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const calculateBuyOutput = (usdcInput: number) => {
-    if (!pool?.price || usdcInput <= 0) return 0;
-    return usdcInput / pool.price;
+  const calculateBuyOutput = (usdcInput: number, poolTokens: bigint, poolUsdc: bigint, swapFeeBps: number) => {
+    if (poolTokens <= BigInt(0) || poolUsdc <= BigInt(0) || usdcInput <= 0) return 0;
+    const dy = BigInt(Math.floor(usdcInput * 1_000_000));
+    if (dy <= BigInt(0)) return 0;
+    const fee = dy * BigInt(swapFeeBps) / BigInt(10000);
+    const dyAfterFee = dy - fee;
+    if (dyAfterFee <= BigInt(0)) return 0;
+    const dx = (poolTokens * dyAfterFee) / (poolUsdc + dyAfterFee);
+    return Number(dx) / 1_000_000;
   };
 
-  const calculateSellOutput = (tokenInput: number) => {
-    if (!pool?.price || tokenInput <= 0) return 0;
-    return tokenInput * pool.price;
+  const calculateSellOutput = (tokenInput: number, poolTokens: bigint, poolUsdc: bigint, swapFeeBps: number) => {
+    if (poolTokens <= BigInt(0) || poolUsdc <= BigInt(0) || tokenInput <= 0) return 0;
+    const dx = BigInt(Math.floor(tokenInput * 1_000_000));
+    if (dx <= BigInt(0)) return 0;
+    const fee = dx * BigInt(swapFeeBps) / BigInt(10000);
+    const dxAfterFee = dx - fee;
+    if (dxAfterFee <= BigInt(0)) return 0;
+    const dy = (poolUsdc * dxAfterFee) / (poolTokens + dxAfterFee);
+    return Number(dy) / 1_000_000;
   };
 
   const copyToClipboard = () => {
@@ -756,7 +827,7 @@ function PoolDetailContent() {
                       )}
                       <div className="pl-10 h-12 bg-white/[0.03] border border-white/[0.06] rounded-lg flex items-center text-lg font-mono text-white">
                         {buyAmount && parseFloat(buyAmount) > 0
-                          ? calculateBuyOutput(parseFloat(buyAmount)).toFixed(4)
+                          ? calculateBuyOutput(parseFloat(buyAmount), pool.poolTokens || BigInt(0), pool.poolUsdc || BigInt(0), swapFeeBps).toFixed(4)
                           : '0.0000'}
                       </div>
                     </div>
@@ -789,9 +860,9 @@ function PoolDetailContent() {
                     <Button
                       className="w-full h-12 text-base font-bold rounded-lg bg-positive hover:bg-positive/90 text-black transition-all"
                       onClick={handleBuy}
-                      disabled={loading || !buyAmount || parseFloat(buyAmount) <= 0 || !connected}
+                      disabled={loading || !buyAmount || parseFloat(buyAmount) <= 0}
                     >
-                      {!connected ? 'Connect Wallet' : loading ? 'Swapping...' : 'Buy Tokens'}
+                      {loading ? 'Swapping...' : !connected ? 'Connect Wallet' : 'Buy Tokens'}
                     </Button>
                   </TabsContent>
 
@@ -834,7 +905,7 @@ function PoolDetailContent() {
                       </div>
                       <div className="pl-10 h-12 bg-white/[0.03] border border-white/[0.06] rounded-lg flex items-center text-lg font-mono text-white">
                         {sellAmount && parseFloat(sellAmount) > 0
-                          ? calculateSellOutput(parseFloat(sellAmount)).toFixed(2)
+                          ? calculateSellOutput(parseFloat(sellAmount), pool.poolTokens || BigInt(0), pool.poolUsdc || BigInt(0), swapFeeBps).toFixed(2)
                           : '0.00'}
                       </div>
                     </div>
@@ -867,9 +938,9 @@ function PoolDetailContent() {
                     <Button
                       className="w-full h-12 text-base font-bold rounded-lg bg-negative hover:bg-negative/90 text-white transition-all"
                       onClick={handleSell}
-                      disabled={loading || !sellAmount || parseFloat(sellAmount) <= 0 || !connected}
+                      disabled={loading || !sellAmount || parseFloat(sellAmount) <= 0}
                     >
-                      {!connected ? 'Connect Wallet' : loading ? 'Swapping...' : 'Sell Tokens'}
+                      {loading ? 'Swapping...' : !connected ? 'Connect Wallet' : 'Sell Tokens'}
                     </Button>
                   </TabsContent>
                 </Tabs>

@@ -35,16 +35,17 @@ The MVP implements a self-contained fantasy football platform on Solana. A singl
 | # | Instruction | Module | Caller | Action |
 |---|-------------|--------|--------|--------|
 | 1 | `initialize` | `initialize.rs` | Admin | Create `AdminConfig` with keeper, USDC mint, treasury |
-| 2 | `create_pool` | `market/create_pool.rs` | Admin | Init CPMM pool + vaults for an athlete |
-| 3 | `update_pool` | `market/update_pool.rs` | Admin | Update pool name, role, enabled flag |
-| 4 | `buy` | `market/buy.rs` | User | USDC → athlete tokens via CPMM |
-| 5 | `sell` | `market/sell.rs` | User | Athlete tokens → USDC via CPMM |
-| 6 | `create_contest` | `create_contest.rs` | Admin | Create contest with start time, prize split, pre-create vault ATAs, ALT |
-| 7 | `enter_contest` | `enter_contest.rs` | User | Single-step: validate 11-athlete lineup role counts, stake tokens |
-| 8 | `lock_contest` | `lock_contest.rs` | Keeper | Lock contest (Open → Locked) |
-| 9 | `process_entry_mint` | `market/process_entry_mint.rs` | Keeper | Per-mint: swap 90% staked tokens → USDC, burn 10% |
-| 10 | `settle_contest` | `settle_contest.rs` | Keeper | Finalize prize pool from escrow balance (Locked → Settled) |
-| 11 | `claim_reward` | `claim_reward.rs` | User+Keeper | Claim USDC prize (requires keeper co-signature) |
+| 2 | `update_config` | `update_config.rs` | Admin | Update USDC mint, swap fee, keeper, treasury |
+| 3 | `create_pool` | `market/create_pool.rs` | Admin | Init CPMM pool + vaults for an athlete |
+| 4 | `update_pool` | `market/update_pool.rs` | Admin | Update pool name, role, enabled flag |
+| 5 | `buy` | `market/buy.rs` | User | USDC → athlete tokens via CPMM |
+| 6 | `sell` | `market/sell.rs` | User | Athlete tokens → USDC via CPMM |
+| 7 | `create_contest` | `create_contest.rs` | Admin | Create contest with start time, prize split, pre-create vault ATAs, ALT |
+| 8 | `enter_contest` | `enter_contest.rs` | User | Single-step: validate 11-athlete lineup role counts, stake tokens |
+| 9 | `lock_contest` | `lock_contest.rs` | Keeper | Lock contest (Open → Locked) |
+| 10 | `process_entry_mint` | `market/process_entry_mint.rs` | Keeper | Per-mint: swap 90% staked tokens → USDC, burn 10% |
+| 11 | `settle_contest` | `settle_contest.rs` | Keeper | Finalize prize pool from escrow balance (Locked → Settled) |
+| 12 | `claim_reward` | `claim_reward.rs` | User+Keeper | Claim USDC prize (requires keeper co-signature) |
 
 ## Contest Flow
 

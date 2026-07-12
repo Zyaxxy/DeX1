@@ -1,5 +1,5 @@
 {
-  "address": "DVhT84igqfyaKaaFDfmjdZGUTNwyoCPQetmVdV5NdTbU",
+  "address": "HLqcxyy9DrVH7DJ2NqTza8Vq6GWB4aUuUSjFWdq5EAmt",
   "metadata": {
     "name": "dexi",
     "version": "0.1.0",
@@ -1746,6 +1746,73 @@
         }
       ],
       "args": []
+    },
+    {
+      "name": "update_config",
+      "discriminator": [
+        29,
+        158,
+        252,
+        191,
+        10,
+        83,
+        219,
+        99
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  97,
+                  100,
+                  109,
+                  105,
+                  110
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "usdc_mint"
+        },
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "token_program"
+        }
+      ],
+      "args": [
+        {
+          "name": "swap_fee_bps",
+          "type": {
+            "option": "u16"
+          }
+        },
+        {
+          "name": "keeper",
+          "type": {
+            "option": "pubkey"
+          }
+        },
+        {
+          "name": "treasury",
+          "type": {
+            "option": "pubkey"
+          }
+        }
+      ]
     },
     {
       "name": "update_pool",

@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import Link from 'next/link';
-import { motion } from 'framer-motion';
+
 import { useRevolvingTitle } from '@/hooks/useRevolvingTitle';
 import { usePageMeta } from '@/hooks/usePageMeta';
 import Image from 'next/image';
@@ -295,11 +295,10 @@ export default function MarketsPage() {
                 const priceHistoryValues = pool.priceHistory.map(p => p.price);
 
                 return (
-                  <motion.div
+                  <div
                     key={pool.mint}
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: Math.min(i * 0.025, 0.3), duration: 0.2, ease: 'easeOut' }}
+                    className="animate-fade-in"
+                    style={{ animationDelay: `${Math.min(i * 25, 300)}ms` }}
                   >
                     <Link
                       href={`/markets/${pool.mint}`}
@@ -357,7 +356,7 @@ export default function MarketsPage() {
                         </span>
                       </div>
                     </Link>
-                  </motion.div>
+                  </div>
                 );
               })}
             </div>

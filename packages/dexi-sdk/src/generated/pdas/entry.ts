@@ -24,7 +24,7 @@ export async function findEntryPda(
   config: { programAddress?: Address | undefined } = {},
 ): Promise<ProgramDerivedAddress> {
   const {
-    programAddress = "DVhT84igqfyaKaaFDfmjdZGUTNwyoCPQetmVdV5NdTbU" as Address<"DVhT84igqfyaKaaFDfmjdZGUTNwyoCPQetmVdV5NdTbU">,
+    programAddress = "HLqcxyy9DrVH7DJ2NqTza8Vq6GWB4aUuUSjFWdq5EAmt" as Address<"HLqcxyy9DrVH7DJ2NqTza8Vq6GWB4aUuUSjFWdq5EAmt">,
   } = config;
   return await getProgramDerivedAddress({
     programAddress,

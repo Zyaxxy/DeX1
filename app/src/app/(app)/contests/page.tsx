@@ -85,6 +85,7 @@ function ContestsPage() {
       try {
         const response = await getRpc().getProgramAccounts(PROGRAM_ID.toBase58() as any, {
           encoding: 'base64',
+          commitment: 'confirmed',
         }).send();
 
         const CONTEST_DISCRIMINATOR_BYTES = [216, 26, 88, 18, 251, 80, 201, 96];

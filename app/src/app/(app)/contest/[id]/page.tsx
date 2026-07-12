@@ -6,7 +6,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import { PublicKey, TransactionMessage, VersionedTransaction, TransactionInstruction, SystemProgram } from '@solana/web3.js';
-import { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID } from '@solana/spl-token';
+import { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID, createAssociatedTokenAccountInstruction } from '@solana/spl-token';
 import { findConfigPda, findEntryPda, findContestPda, getEnterContestInstructionDataEncoder } from '@dexi/sdk';
 import { useRevolvingTitle } from '@/hooks/useRevolvingTitle';
 import { usePageMeta } from '@/hooks/usePageMeta';
@@ -83,7 +83,7 @@ function ContestDetailContent() {
   const params = useParams();
   const router = useRouter();
   const contestId = params?.id ? parseInt(params.id as string) : 1;
-  const { connected, publicKey, sendTransaction } = useWallet();
+  const { connected, publicKey, sendTransaction, signTransaction } = useWallet();
   const { setVisible } = useWalletModal();
   const [contest, setContest] = useState<ContestData | null>(null);
   const [contestMints, setContestMints] = useState<Set<string>>(new Set());
@@ -265,6 +265,7 @@ function ContestDetailContent() {
 
       const uniqueMints = Array.from(new Set(selectedAthletes.map(a => a.mint)));
       const remainingAccounts: { address: string; isWritable: boolean; isSigner: boolean }[] = [];
+      const ataCreationIxs: TransactionInstruction[] = [];
 
       for (const mintStr of uniqueMints) {
         const mintKey = new PublicKey(mintStr);
@@ -278,11 +279,25 @@ function ContestDetailContent() {
           { address: vault.toBase58(), isWritable: true, isSigner: false },
           { address: poolKey.toBase58(), isWritable: false, isSigner: false }
         );
+
+        const ataInfo = await getConnection().getAccountInfo(userAta);
+        if (!ataInfo) {
+          ataCreationIxs.push(
+            createAssociatedTokenAccountInstruction(
+              userKey,
+              userAta,
+              userKey,
+              mintKey
+            )
+          );
+        }
       }
 
-      toast.info('Please approve the transaction in your wallet.');
+      if (ataCreationIxs.length > 0) {
+        toast.info('Creating token accounts...');
+      }
 
-      const PROGRAM_ID_KEY = new PublicKey('5RjcrhEhspU8YLLjWN7SJ3TRJkoLZW3LnkrCWCNgTDb3');
+      const PROGRAM_ID_KEY = PROGRAM_ID;
       const SYSTEM_PROGRAM_KEY = SystemProgram.programId;
       const TOKEN_PROGRAM_KEY = TOKEN_PROGRAM_ID;
 
@@ -311,19 +326,69 @@ function ContestDetailContent() {
         data: Buffer.from(instructionData),
       });
 
-      const { blockhash, lastValidBlockHeight } = await getConnection().getLatestBlockhash('confirmed');
+      const { context: { slot }, value: { blockhash, lastValidBlockHeight } } = await getConnection().getLatestBlockhashAndContext('confirmed');
 
-      const lutAddress = new PublicKey(contest.addressLookupTable);
-      const lutInfo = await getConnection().getAddressLookupTable(lutAddress);
+      let lutAccount = null;
+      try {
+        const lutAddress = new PublicKey(contest.addressLookupTable);
+        const lutInfo = await getConnection().getAddressLookupTable(lutAddress);
+        lutAccount = lutInfo.value || null;
+      } catch (lutError) {
+        console.warn('Failed to fetch LUT, continuing without it:', lutError);
+      }
 
-      const messageV0 = new TransactionMessage({
-        payerKey: userKey,
-        recentBlockhash: blockhash,
-        instructions: [instruction],
-      }).compileToV0Message(lutInfo.value ? [lutInfo.value] : []);
+      let signature: string;
 
-      const transaction = new VersionedTransaction(messageV0);
-      const signature = await sendTransaction(transaction, getConnection());
+      const trySignAndSendRaw = async (tx: VersionedTransaction): Promise<string> => {
+        if (signTransaction) {
+          const signedTx = await signTransaction(tx);
+          const rawTx = signedTx.serialize();
+          return getConnection().sendRawTransaction(rawTx, {
+            skipPreflight: false,
+            preflightCommitment: 'confirmed',
+          });
+        }
+        return sendTransaction(tx, getConnection());
+      };
+
+      const allIxs = [...ataCreationIxs, instruction];
+
+      try {
+        const messageV0 = new TransactionMessage({
+          payerKey: userKey,
+          recentBlockhash: blockhash,
+          instructions: allIxs,
+        }).compileToV0Message(lutAccount ? [lutAccount] : []);
+
+        const transaction = new VersionedTransaction(messageV0);
+        signature = await trySignAndSendRaw(transaction);
+      } catch (v0Error: any) {
+        const isWalletError =
+          v0Error?.message?.includes('Unexpected') ||
+          v0Error?.message?.includes('disconnected') ||
+          v0Error?.message?.includes('rejected') ||
+          v0Error?.message?.includes('service worker');
+
+        if (isWalletError) {
+          console.warn('V0 with LUT failed, trying without LUT:', v0Error.message);
+          
+          try {
+            const messageV0NoLut = new TransactionMessage({
+              payerKey: userKey,
+              recentBlockhash: blockhash,
+              instructions: allIxs,
+            }).compileToV0Message([]);
+
+            const transactionNoLut = new VersionedTransaction(messageV0NoLut);
+            signature = await trySignAndSendRaw(transactionNoLut);
+          } catch (noLutError: any) {
+            console.error('V0 without LUT also failed:', noLutError.message);
+            throw new Error('Wallet connection issue. Please disconnect and reconnect your wallet, or use a different wallet (Backpack, Glow, Slope).');
+          }
+        } else {
+          throw v0Error;
+        }
+      }
 
       const confirmation = await getConnection().confirmTransaction({
         signature,
@@ -345,9 +410,30 @@ function ContestDetailContent() {
       setShowConfirm(false);
       setSelectedAthletes([]);
     } catch (error: any) {
-      console.error(error);
-      const message = error?.message || 'Transaction failed';
-      toast.error(message.includes('overruns') ? 'Wallet encoding error. Try refreshing or using a different wallet.' : message);
+      console.error('Enter contest error:', error);
+      let message = 'Transaction failed';
+      
+      if (error?.message) {
+        message = error.message;
+      } else if (error?.error?.message) {
+        message = error.error.message;
+      } else if (error?.code) {
+        message = `Error code: ${error.code}`;
+      }
+      
+      if (message.includes('overruns') || message.includes('Invalid')) {
+        message = 'Wallet encoding error. Try refreshing or using a different wallet.';
+      } else if (message.includes('User rejected') || message.includes('rejected')) {
+        message = 'Transaction was rejected. Please approve the transaction in your wallet.';
+      } else if (message.includes('disconnected port') || message.includes('service worker')) {
+        message = 'Wallet connection lost. Please refresh the page and reconnect your wallet.';
+      } else if (message === 'Unexpected error' || message.includes('Unexpected error')) {
+        message = 'Wallet error. Try disconnecting and reconnecting your wallet, or use a different wallet.';
+      } else if (message.length > 100) {
+        message = 'Transaction failed. Please try again.';
+      }
+      
+      toast.error(message);
     } finally {
       setSubmitting(false);
     }

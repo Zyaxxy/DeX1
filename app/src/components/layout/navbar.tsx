@@ -51,9 +51,11 @@ export default function Navbar() {
             <Bell className="w-5 h-5" />
           </button>
 
-          <div className="hidden md:block">
-            <WalletButton />
-          </div>
+          {pathname !== '/' && (
+            <div className="hidden md:block">
+              <WalletButton />
+            </div>
+          )}
 
           <Button
             variant="ghost"
@@ -85,9 +87,11 @@ export default function Navbar() {
                   {link.name}
                 </Link>
               ))}
-              <div className="pt-2 flex justify-center">
-                <WalletButton />
-              </div>
+              {pathname !== '/' && (
+                <div className="pt-2 flex justify-center">
+                  <WalletButton />
+                </div>
+              )}
             </div>
           </motion.div>
         )}

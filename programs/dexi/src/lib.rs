@@ -9,7 +9,7 @@ pub use constants::*;
 pub use instructions::*;
 pub use state::*;
 
-declare_id!("DVhT84igqfyaKaaFDfmjdZGUTNwyoCPQetmVdV5NdTbU");
+declare_id!("HLqcxyy9DrVH7DJ2NqTza8Vq6GWB4aUuUSjFWdq5EAmt");
 
 #[program]
 pub mod dexi {
@@ -90,5 +90,14 @@ pub mod dexi {
 
     pub fn claim_reward(ctx: Context<ClaimReward>, amount: u64) -> Result<()> {
         ctx.accounts.claim(amount)
+    }
+
+    pub fn update_config(
+        ctx: Context<UpdateConfig>,
+        swap_fee_bps: Option<u16>,
+        keeper: Option<Pubkey>,
+        treasury: Option<Pubkey>,
+    ) -> Result<()> {
+        ctx.accounts.update(swap_fee_bps, keeper, treasury)
     }
 }

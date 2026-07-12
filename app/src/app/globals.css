@@ -186,6 +186,15 @@
   50% { opacity: 0.5; }
 }
 
+@keyframes fade-in {
+  0% { opacity: 0; transform: translateY(8px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out both;
+}
+
 .animate-float {
   animation: float 6s ease-in-out infinite;
 }
@@ -362,6 +371,8 @@
   left: 0;
   bottom: 0;
   right: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.7);
 }
 
 .wallet-adapter-modal-container {
@@ -370,6 +381,7 @@
   min-height: calc(100vh - 6rem);
   align-items: center;
   justify-content: center;
+  background: transparent;
 }
 
 @media (max-width: 480px) {
@@ -385,7 +397,7 @@
   display: flex;
   align-items: center;
   flex-direction: column;
-  z-index: 1050;
+  z-index: 10000;
   max-width: 400px;
   width: 100%;
   border-radius: 0.5rem;

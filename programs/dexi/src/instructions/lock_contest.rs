@@ -19,7 +19,7 @@ pub struct LockContest<'info> {
 impl<'info> LockContest<'info> {
     /// Transitions the contest from Open → Locked once `start_time` has elapsed.
     pub fn lock(&mut self) -> Result<()> {
-        let clock = Clock::get()?;
+        let _clock = Clock::get()?;
 
         require!(self.contest.status == ContestStatus::Open, DexiError::ContestNotOpen);
         // For MVP testing, we bypass the time lock so the test suite runs instantly without sleeps.
