@@ -4,7 +4,9 @@ import Navbar from "@/components/layout/navbar";
 import Footer from "@/components/layout/footer";
 import HeroSection from "@/components/landing/hero-section";
 import TickerTape from "@/components/landing/ticker-tape";
+import MarketsSection from "@/components/landing/markets-section";
 import HowItWorks from "@/components/landing/how-it-works";
+
 
 export const metadata: Metadata = {
   title: "DEXI : Fantasy Sports Trading on Solana",
@@ -54,6 +56,7 @@ export default function LandingPage() {
           <HeroSection />
           <TickerTape />
           <HowItWorks />
+          <MarketsSection />
         </main>
         <Footer />
       </div>
