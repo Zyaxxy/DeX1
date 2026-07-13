@@ -24,10 +24,12 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 
-import { getConnection, getRpc, PROGRAM_ID, ROLE_LABELS, CONTEST_STATUS_LABELS, ROLE_COLORS, formatUSDC, formatEstimatedPrizePool, formatTimestamp, ROLE_REQUIREMENTS, LINEUP_SIZE } from '@/solana/client';
+import { getConnection, getRpc, PROGRAM_ID, ROLE_LABELS, CONTEST_STATUS_LABELS, ROLE_COLORS, formatUSDC, formatEstimatedPrizePool, formatTimestamp, ROLE_REQUIREMENTS, LINEUP_SIZE, USDC_DECIMALS, TOKEN_DECIMALS } from '@/solana/client';
 import { toast } from 'sonner';
-import { decodeAthletePool, ATHLETE_POOL_DISCRIMINATOR, decodeContest, ContestStatus } from '@dexi/sdk';
+import { decodeAthletePool, ATHLETE_POOL_DISCRIMINATOR, decodeContest, ContestStatus, decodeAdminConfig } from '@dexi/sdk';
 import { getBase58Decoder } from '@solana/kit';
+import { AccountLayout } from '@solana/spl-token';
+import Link from 'next/link';
 
 interface Athlete {
   mint: string;
@@ -98,6 +100,9 @@ function ContestDetailContent() {
   const [roleFilter, setRoleFilter] = useState('all');
   const [showConfirm, setShowConfirm] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [userTokenBalances, setUserTokenBalances] = useState<Record<string, number>>({});
+  const [currentPage, setCurrentPage] = useState(1);
+  const ATHLETES_PER_PAGE = 5;
 
   const { entries: userEntries } = useUserEntries();
   const { scores, loading: scoresLoading } = useLiveScores(userEntries);
@@ -119,6 +124,10 @@ function ContestDetailContent() {
   usePageMeta(meta);
 
   useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, roleFilter]);
+
+  useEffect(() => {
     async function fetchAthletes() {
       try {
         const response = await getRpc().getProgramAccounts(PROGRAM_ID.toBase58() as any, {
@@ -126,7 +135,7 @@ function ContestDetailContent() {
           filters: [{ memcmp: { offset: BigInt(0), encoding: 'base58', bytes: getBase58Decoder().decode(ATHLETE_POOL_DISCRIMINATOR) as any } }]
         }).send();
 
-        setAvailableAthletes(response.map((account) => {
+        const athletes = response.map((account) => {
           const decoded = decodeAthletePool({
             address: account.pubkey,
             data: new Uint8Array(Buffer.from(account.account.data[0], account.account.data[1] as any)),
@@ -134,7 +143,27 @@ function ContestDetailContent() {
           } as any).data;
 
           return { mint: decoded.mint.toString(), name: decoded.name, role: decoded.role, poolAddress: account.pubkey };
-        }));
+        });
+        setAvailableAthletes(athletes);
+
+        if (publicKey) {
+          const userKey = new PublicKey(publicKey.toString());
+          const uniqueMints = [...new Set(athletes.map(a => a.mint))];
+          const ataAddresses = uniqueMints.map(mint => getAssociatedTokenAddressSync(new PublicKey(mint), userKey, true));
+          const accountInfos = await getConnection().getMultipleAccountsInfo(ataAddresses);
+          const balances: Record<string, number> = {};
+          accountInfos.forEach((info, idx) => {
+            if (info) {
+              const tokenAccount = AccountLayout.decode(info.data);
+              const qty = Number(tokenAccount.amount) / Math.pow(10, TOKEN_DECIMALS);
+              if (qty > 0) {
+                balances[uniqueMints[idx]] = qty;
+              }
+            }
+          });
+          setUserTokenBalances(balances);
+        }
+
         setFetchError(null);
       } catch (err) {
         console.error("Failed to fetch athletes:", err);
@@ -142,7 +171,7 @@ function ContestDetailContent() {
       }
     }
     fetchAthletes();
-  }, []);
+  }, [publicKey]);
 
   useEffect(() => {
     async function fetchContest() {
@@ -358,42 +387,14 @@ function ContestDetailContent() {
 
       const allIxs = [...ataCreationIxs, instruction];
 
-      try {
-        const messageV0 = new TransactionMessage({
-          payerKey: userKey,
-          recentBlockhash: blockhash,
-          instructions: allIxs,
-        }).compileToV0Message(lutAccount ? [lutAccount] : []);
+      const messageV0 = new TransactionMessage({
+        payerKey: userKey,
+        recentBlockhash: blockhash,
+        instructions: allIxs,
+      }).compileToV0Message(lutAccount ? [lutAccount] : []);
 
-        const transaction = new VersionedTransaction(messageV0);
-        signature = await trySignAndSendRaw(transaction);
-      } catch (v0Error: any) {
-        const isWalletError =
-          v0Error?.message?.includes('Unexpected') ||
-          v0Error?.message?.includes('disconnected') ||
-          v0Error?.message?.includes('rejected') ||
-          v0Error?.message?.includes('service worker');
-
-        if (isWalletError) {
-          console.warn('V0 with LUT failed, trying without LUT:', v0Error.message);
-          
-          try {
-            const messageV0NoLut = new TransactionMessage({
-              payerKey: userKey,
-              recentBlockhash: blockhash,
-              instructions: allIxs,
-            }).compileToV0Message([]);
-
-            const transactionNoLut = new VersionedTransaction(messageV0NoLut);
-            signature = await trySignAndSendRaw(transactionNoLut);
-          } catch (noLutError: any) {
-            console.error('V0 without LUT also failed:', noLutError.message);
-            throw new Error('Wallet connection issue. Please disconnect and reconnect your wallet, or use a different wallet (Backpack, Glow, Slope).');
-          }
-        } else {
-          throw v0Error;
-        }
-      }
+      const transaction = new VersionedTransaction(messageV0);
+      signature = await trySignAndSendRaw(transaction);
 
       const confirmation = await getConnection().confirmTransaction({
         signature,
@@ -416,59 +417,175 @@ function ContestDetailContent() {
       setSelectedAthletes([]);
     } catch (error: any) {
       console.error('Enter contest error:', error);
-      let message = 'Transaction failed';
-      
-      if (error?.message) {
-        message = error.message;
-      } else if (error?.error?.message) {
-        message = error.error.message;
-      } else if (error?.code) {
-        message = `Error code: ${error.code}`;
-      }
-      
-      if (message.includes('overruns') || message.includes('Invalid')) {
-        message = 'Wallet encoding error. Try refreshing or using a different wallet.';
-      } else if (message.includes('User rejected') || message.includes('rejected')) {
-        message = 'Transaction was rejected. Please approve the transaction in your wallet.';
-      } else if (message.includes('disconnected port') || message.includes('service worker')) {
-        message = 'Wallet connection lost. Please refresh the page and reconnect your wallet.';
-      } else if (message === 'Unexpected error' || message.includes('Unexpected error')) {
-        message = 'Wallet error. Try disconnecting and reconnecting your wallet, or use a different wallet.';
-      } else if (message.length > 100) {
-        message = 'Transaction failed. Please try again.';
-      }
-      
-      toast.error(message);
+      const friendlyMessage = parseDexiError(error);
+      toast.error(friendlyMessage);
     } finally {
       setSubmitting(false);
     }
   };
 
   const filteredAthletes = useMemo(() => {
-    return availableAthletes.filter(athlete => {
+    const filtered = availableAthletes.filter(athlete => {
       const isAllowed = contestMints.size === 0 || contestMints.has(athlete.mint);
       const matchesSearch = athlete.name.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesRole = roleFilter === 'all' || ROLE_LABELS[athlete.role] === roleFilter;
       return isAllowed && matchesSearch && matchesRole;
     });
-  }, [availableAthletes, searchQuery, roleFilter, contestMints]);
 
-  const athletesByRole = useMemo(() => {
-    const map: Record<string, Athlete[]> = {};
-    for (const role of ROLE_ORDER) {
-      map[role] = selectedAthletes.filter(a => ROLE_LABELS[a.role] === role);
-    }
-    return map;
+    return filtered.sort((a, b) => {
+      const balanceA = userTokenBalances[a.mint] || 0;
+      const balanceB = userTokenBalances[b.mint] || 0;
+      if (balanceA > 0 && balanceB === 0) return -1;
+      if (balanceB > 0 && balanceA === 0) return 1;
+      if (balanceA > 0 && balanceB > 0) return balanceB - balanceA;
+      const roleA = ROLE_LABELS[a.role] || '';
+      const roleB = ROLE_LABELS[b.role] || '';
+      if (roleA !== roleB) return roleA.localeCompare(roleB);
+      return a.name.localeCompare(b.name);
+    });
+  }, [availableAthletes, searchQuery, roleFilter, contestMints, userTokenBalances]);
+
+  const paginatedAthletes = useMemo(() => {
+    const start = (currentPage - 1) * ATHLETES_PER_PAGE;
+    return filteredAthletes.slice(start, start + ATHLETES_PER_PAGE);
+  }, [filteredAthletes, currentPage]);
+
+  const totalPages = Math.ceil(filteredAthletes.length / ATHLETES_PER_PAGE);
+
+  const { minimumLineup, flexLineup } = useMemo(() => {
+    const minGk: Athlete[] = [];
+    const minDef: Athlete[] = [];
+    const minMid: Athlete[] = [];
+    const minFwd: Athlete[] = [];
+    const flex: Athlete[] = [];
+
+    selectedAthletes.forEach(athlete => {
+      const roleLabel = ROLE_LABELS[athlete.role];
+      if (roleLabel === 'GK' && minGk.length < ROLE_REQUIREMENTS.GK) {
+        minGk.push(athlete);
+      } else if (roleLabel === 'DEF' && minDef.length < ROLE_REQUIREMENTS.DEF) {
+        minDef.push(athlete);
+      } else if (roleLabel === 'MID' && minMid.length < ROLE_REQUIREMENTS.MID) {
+        minMid.push(athlete);
+      } else if (roleLabel === 'FWD' && minFwd.length < ROLE_REQUIREMENTS.FWD) {
+        minFwd.push(athlete);
+      } else {
+        flex.push(athlete);
+      }
+    });
+
+    return {
+      minimumLineup: {
+        GK: minGk,
+        DEF: minDef,
+        MID: minMid,
+        FWD: minFwd,
+      } as Record<string, Athlete[]>,
+      flexLineup: flex
+    };
   }, [selectedAthletes]);
 
-  const maxSlotsByRole: Record<string, number> = {
-    GK: ROLE_REQUIREMENTS.GK,
-    DEF: ROLE_REQUIREMENTS.DEF,
-    MID: ROLE_REQUIREMENTS.MID,
-    FWD: ROLE_REQUIREMENTS.FWD,
-  };
+  const totalSlots = LINEUP_SIZE; // 11
 
-  const totalSlots = Object.values(maxSlotsByRole).reduce((a, b) => a + b, 0);
+  const [usdcBalance, setUsdcBalance] = useState<number>(0);
+  const [userBalances, setUserBalances] = useState<Record<string, number>>({});
+  const [missingTokens, setMissingTokens] = useState<Athlete[]>([]);
+  const [checkingBalances, setCheckingBalances] = useState(false);
+
+  const fetchUserBalances = useCallback(async () => {
+    if (!publicKey || selectedAthletes.length === 0) return;
+    setCheckingBalances(true);
+    try {
+      const userKey = new PublicKey(publicKey.toString());
+      const [configPda] = await findConfigPda();
+      const configInfo = await getConnection().getAccountInfo(new PublicKey(configPda));
+      if (!configInfo) {
+        setCheckingBalances(false);
+        return;
+      }
+      const configData = decodeAdminConfig({
+        address: configPda,
+        data: new Uint8Array(configInfo.data),
+        exists: true,
+      } as any).data;
+      const usdcMint = new PublicKey(configData.usdcMint);
+
+      const uniqueMints = Array.from(new Set(selectedAthletes.map(a => a.mint)));
+      const ataAddresses = [
+        getAssociatedTokenAddressSync(usdcMint, userKey, true),
+        ...uniqueMints.map(mint => getAssociatedTokenAddressSync(new PublicKey(mint), userKey, true))
+      ];
+
+      const accountInfos = await getConnection().getMultipleAccountsInfo(ataAddresses);
+      const newBalances: Record<string, number> = {};
+
+      if (accountInfos[0]) {
+        const usdcBal = AccountLayout.decode(accountInfos[0].data).amount;
+        setUsdcBalance(Number(usdcBal) / 10 ** 6);
+      } else {
+        setUsdcBalance(0);
+      }
+
+      const missing: Athlete[] = [];
+      uniqueMints.forEach((mint, idx) => {
+        const info = accountInfos[idx + 1];
+        let balance = 0;
+        if (info) {
+          const tokenAccount = AccountLayout.decode(info.data);
+          balance = Number(tokenAccount.amount) / Math.pow(10, TOKEN_DECIMALS);
+        }
+        newBalances[mint] = balance;
+
+        const countInLineup = selectedAthletes.filter(a => a.mint === mint).length;
+        if (balance < countInLineup) {
+          const athleteInfo = selectedAthletes.find(a => a.mint === mint)!;
+          missing.push(athleteInfo);
+        }
+      });
+
+      setUserBalances(newBalances);
+      setMissingTokens(missing);
+    } catch (err) {
+      console.error('Failed to fetch user balances:', err);
+    } finally {
+      setCheckingBalances(false);
+    }
+  }, [publicKey, selectedAthletes]);
+
+  useEffect(() => {
+    if (showConfirm) {
+      fetchUserBalances();
+    }
+  }, [showConfirm, fetchUserBalances]);
+
+  const parseDexiError = (error: any): string => {
+    const errMsg = error?.message || error?.error?.message || String(error);
+    if (errMsg.includes('6001') || errMsg.includes('0x1771') || errMsg.includes('PoolDisabled')) {
+      return 'One or more of the athlete pools in your lineup is currently disabled.';
+    }
+    if (errMsg.includes('6003') || errMsg.includes('0x1773') || errMsg.includes('InsufficientLiquidity')) {
+      return 'Insufficient liquidity in the athlete pool. Please try a different lineup or trade smaller amounts.';
+    }
+    if (errMsg.includes('6004') || errMsg.includes('0x1774') || errMsg.includes('ContestNotOpen')) {
+      return 'This contest is not open for entries.';
+    }
+    if (errMsg.includes('6005') || errMsg.includes('0x1775') || errMsg.includes('EntryDeadlinePassed')) {
+      return 'The entry deadline for this contest has passed.';
+    }
+    if (errMsg.includes('6006') || errMsg.includes('0x1776') || errMsg.includes('InvalidLineup')) {
+      return 'Your drafted lineup is invalid. Please ensure it matches role requirements (1 GK, 2 DEF, 2 MID, 2 FWD).';
+    }
+    if (errMsg.includes('6012') || errMsg.includes('0x177c') || errMsg.includes('AlreadyClaimed')) {
+      return 'You have already claimed your reward for this contest.';
+    }
+    if (errMsg.includes('User rejected') || errMsg.includes('rejected')) {
+      return 'Transaction was rejected. Please approve the transaction in your wallet.';
+    }
+    if (errMsg.includes('disconnected port') || errMsg.includes('service worker')) {
+      return 'Wallet connection lost. Please refresh the page and reconnect your wallet.';
+    }
+    return errMsg.slice(0, 150);
+  };
 
   if (fetchError && !contest) {
     return (
@@ -698,10 +815,10 @@ function ContestDetailContent() {
                   {/* Role Summary */}
                   <div className="flex items-center justify-between mb-4 p-3 bg-[#181b25] border border-[#454932]">
                     <span className="font-mono text-[12px] tracking-[0.02em] text-[#c6c9ab]">
-                      GK: <strong className={roleCounts.GK >= maxSlotsByRole.GK ? 'text-positive' : 'text-[#c6c9ab]'}>{roleCounts.GK}/{maxSlotsByRole.GK}</strong>
-                      {' | '}DEF: <strong className={roleCounts.DEF >= maxSlotsByRole.DEF ? 'text-positive' : 'text-[#c6c9ab]'}>{roleCounts.DEF}/{maxSlotsByRole.DEF}</strong>
-                      {' | '}MID: <strong className={roleCounts.MID >= maxSlotsByRole.MID ? 'text-positive' : 'text-[#c6c9ab]'}>{roleCounts.MID}/{maxSlotsByRole.MID}</strong>
-                      {' | '}FWD: <strong className={roleCounts.FWD >= maxSlotsByRole.FWD ? 'text-positive' : 'text-[#c6c9ab]'}>{roleCounts.FWD}/{maxSlotsByRole.FWD}</strong>
+                      GK: <strong className={roleCounts.GK >= ROLE_REQUIREMENTS.GK ? 'text-positive' : 'text-[#c6c9ab]'}>{roleCounts.GK}/{ROLE_REQUIREMENTS.GK}</strong>
+                      {' | '}DEF: <strong className={roleCounts.DEF >= ROLE_REQUIREMENTS.DEF ? 'text-positive' : 'text-[#c6c9ab]'}>{roleCounts.DEF}/{ROLE_REQUIREMENTS.DEF}</strong>
+                      {' | '}MID: <strong className={roleCounts.MID >= ROLE_REQUIREMENTS.MID ? 'text-positive' : 'text-[#c6c9ab]'}>{roleCounts.MID}/{ROLE_REQUIREMENTS.MID}</strong>
+                      {' | '}FWD: <strong className={roleCounts.FWD >= ROLE_REQUIREMENTS.FWD ? 'text-positive' : 'text-[#c6c9ab]'}>{roleCounts.FWD}/{ROLE_REQUIREMENTS.FWD}</strong>
                     </span>
                   </div>
 
@@ -718,13 +835,13 @@ function ContestDetailContent() {
                       <line x1="20" y1="220" x2="380" y2="220" stroke="rgba(255,255,255,0.02)" strokeWidth="1" strokeDasharray="4,4" />
                     </svg>
 
-                    <div className="absolute inset-0 grid grid-rows-4">
+                    <div className="absolute inset-0 grid grid-rows-5">
                       {ROLE_ORDER.map(role => (
-                        <div key={role} className="relative border-b border-white/[0.03] last:border-b-0 p-2">
+                        <div key={role} className="relative border-b border-white/[0.03] p-2">
                           <span className="font-mono text-[8px] tracking-[0.02em] font-[700] text-white/15 absolute top-1 left-2.5 uppercase">{role}</span>
                           <div className="flex items-center justify-center gap-1.5 h-full pt-4">
                             <AnimatePresence mode="popLayout">
-                              {athletesByRole[role].map(athlete => (
+                              {minimumLineup[role]?.map(athlete => (
                                 <motion.button
                                   key={athlete.mint}
                                   layout
@@ -752,7 +869,7 @@ function ContestDetailContent() {
                                 </motion.button>
                               ))}
                             </AnimatePresence>
-                            {Array.from({ length: Math.max(0, maxSlotsByRole[role] - athletesByRole[role].length) }).map((_, i) => (
+                            {Array.from({ length: Math.max(0, (role === 'GK' ? 1 : 2) - (minimumLineup[role]?.length || 0)) }).map((_, i) => (
                               <div
                                 key={`empty-${role}-${i}`}
                                 className="w-9 h-9 md:w-11 md:h-11 rounded-full border-2 border-dashed border-[#454932] bg-[#181b25]/50 flex items-center justify-center text-[#c6c9ab]"
@@ -763,6 +880,43 @@ function ContestDetailContent() {
                           </div>
                         </div>
                       ))}
+                      {/* Flex Row */}
+                      <div className="relative p-2">
+                        <span className="font-mono text-[8px] tracking-[0.02em] font-[700] text-white/15 absolute top-1 left-2.5 uppercase">FLEX</span>
+                        <div className="flex items-center justify-center gap-1.5 h-full pt-4">
+                          <AnimatePresence mode="popLayout">
+                            {flexLineup.map(athlete => (
+                              <motion.button
+                                key={athlete.mint}
+                                layout
+                                initial={{ opacity: 0, scale: 0.8 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.8 }}
+                                transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
+                                onClick={() => removeAthlete(athlete.mint)}
+                                className="w-9 h-9 md:w-11 md:h-11 rounded-full flex items-center justify-center font-heading text-[12px] font-[700] transition-all cursor-pointer relative group border-2 border-primary/40 bg-primary/20 text-primary"
+                                title={athlete.name}
+                              >
+                                {athlete.name[0]}
+                                <span className="absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap bg-black/90 font-mono text-[10px] px-2 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none border border-[#454932]">
+                                  {athlete.name} ({ROLE_LABELS[athlete.role]})
+                                </span>
+                                <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-negative/80 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <X className="w-2.5 h-2.5" />
+                                </span>
+                              </motion.button>
+                            ))}
+                          </AnimatePresence>
+                          {Array.from({ length: Math.max(0, 4 - flexLineup.length) }).map((_, i) => (
+                            <div
+                              key={`empty-flex-${i}`}
+                              className="w-9 h-9 md:w-11 md:h-11 rounded-full border-2 border-dashed border-[#454932] bg-[#181b25]/50 flex items-center justify-center text-[#c6c9ab]"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   </div>
 
@@ -874,7 +1028,14 @@ function ContestDetailContent() {
               <div className="border border-[#454932] bg-[#1c1f2a] flex flex-col h-full">
                 <div className="p-4 border-b border-[#454932] shrink-0">
                   <div className="flex items-center justify-between mb-3">
-                    <h2 className="font-heading text-[18px] font-[600] text-white">Athlete Pool</h2>
+                    <div className="flex items-center gap-2">
+                      <h2 className="font-heading text-[18px] font-[600] text-white">Athlete Pool</h2>
+                      {Object.keys(userTokenBalances).length > 0 && (
+                        <span className="font-mono text-[10px] font-[700] text-positive bg-positive/15 px-2 py-0.5">
+                          {Object.keys(userTokenBalances).length} owned
+                        </span>
+                      )}
+                    </div>
                     <span className="font-mono text-[11px] tracking-[0.02em] font-[500] text-[#c6c9ab]">{availableAthletes.length} athletes</span>
                   </div>
                   <div className="relative mb-3">
@@ -918,9 +1079,11 @@ function ContestDetailContent() {
                       </div>
                     )}
                     {filteredAthletes.length > 0 && (
-                      filteredAthletes.map(athlete => {
+                      paginatedAthletes.map(athlete => {
                         const isSelected = selectedAthletes.some(a => a.mint === athlete.mint);
                         const roleLabel = ROLE_LABELS[athlete.role];
+                        const balance = userTokenBalances[athlete.mint] || 0;
+                        const hasBalance = balance > 0;
                         return (
                           <button
                             key={athlete.mint}
@@ -929,7 +1092,9 @@ function ContestDetailContent() {
                             className={`w-full flex items-center justify-between p-3 text-left transition-all ${
                               isSelected
                                 ? 'bg-positive/5 border border-positive/20 opacity-70'
-                                : 'bg-[#181b25] border border-[#454932] hover:bg-[#1c1f2a] hover:border-white/20 cursor-pointer'
+                                : hasBalance
+                                  ? 'bg-positive/[0.08] border border-positive/30 hover:bg-positive/10 hover:border-positive/50 cursor-pointer'
+                                  : 'bg-[#181b25] border border-[#454932] hover:bg-[#1c1f2a] hover:border-white/20 cursor-pointer'
                             }`}
                           >
                             <div className="flex items-center gap-3 min-w-0">
@@ -944,10 +1109,19 @@ function ContestDetailContent() {
                                   <span className={`font-mono text-[10px] tracking-[0.02em] font-[700] px-1.5 py-0.5 ${ROLE_COLORS_MAP[roleLabel]}`}>
                                     {roleLabel}
                                   </span>
+                                  {hasBalance && (
+                                    <span className="font-mono text-[9px] font-[700] text-positive bg-positive/15 px-1.5 py-0.5">
+                                      {balance.toFixed(2)}
+                                    </span>
+                                  )}
                                 </div>
                               </div>
                             </div>
                             {isSelected ? (
+                              <div className="w-7 h-7 rounded-full bg-positive/20 flex items-center justify-center">
+                                <Check className="w-3.5 h-3.5 text-positive" />
+                              </div>
+                            ) : hasBalance ? (
                               <div className="w-7 h-7 rounded-full bg-positive/20 flex items-center justify-center">
                                 <Check className="w-3.5 h-3.5 text-positive" />
                               </div>
@@ -964,9 +1138,31 @@ function ContestDetailContent() {
                 </div>
 
                 <div className="p-3 border-t border-[#454932] shrink-0">
-                  <p className="font-mono text-[11px] tracking-[0.02em] text-[#c6c9ab] text-center">
-                    {filteredAthletes.length} of {availableAthletes.length} athletes
-                  </p>
+                  {totalPages > 1 ? (
+                    <div className="flex items-center justify-between">
+                      <button
+                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                        disabled={currentPage === 1}
+                        className="px-3 py-1.5 font-mono text-[11px] font-[700] bg-[#181b25] border border-[#454932] text-[#c6c9ab] hover:bg-[#1c1f2a] disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        Prev
+                      </button>
+                      <span className="font-mono text-[11px] tracking-[0.02em] text-[#c6c9ab]">
+                        {currentPage} / {totalPages}
+                      </span>
+                      <button
+                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                        disabled={currentPage === totalPages}
+                        className="px-3 py-1.5 font-mono text-[11px] font-[700] bg-[#181b25] border border-[#454932] text-[#c6c9ab] hover:bg-[#1c1f2a] disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="font-mono text-[11px] tracking-[0.02em] text-[#c6c9ab] text-center">
+                      {filteredAthletes.length} of {availableAthletes.length} athletes
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
@@ -1015,33 +1211,70 @@ function ContestDetailContent() {
                   <span className="font-mono text-[11px] tracking-[0.02em] font-[500] text-[#c6c9ab] uppercase">Solana Network</span>
                 </div>
                 <div className="flex items-center justify-between mb-2">
-                  <span className="font-heading text-[16px] font-[600] text-white">Solana Open</span>
-                  <span className="font-mono text-[12px] font-[700] text-primary">$50k GTD Prize Pool</span>
+                  <span className="font-heading text-[16px] font-[600] text-white">{contest.name}</span>
+                  <span className="font-mono text-[12px] font-[700] text-primary">
+                    {contest.settled ? `$${formatUSDC(contest.prizePool)}` : formatEstimatedPrizePool(contest.entryCount)} Prize Pool
+                  </span>
                 </div>
                 <div className="flex items-center gap-4 font-mono text-[12px] text-[#c6c9ab]">
                   <span className="flex items-center gap-1">
                     <DollarSign className="w-3 h-3" />
-                    Entry Fee: 25.00 USDC
+                    Entry Fee: 11 Athlete Tokens
                   </span>
                   <span className="flex items-center gap-1">
                     <Clock className="w-3 h-3" />
-                    Starts in 45m
+                    Starts in: {formatCountdown(contest.startTime)}
                   </span>
                   <span className="flex items-center gap-1">
                     <Users className="w-3 h-3" />
-                    {contest.entryCount} / 2,000 Entries
+                    {contest.entryCount} Entries
                   </span>
                 </div>
               </div>
+
+              {/* Missing Tokens Warning */}
+              {missingTokens.length > 0 && (
+                <div className="px-5 pt-4">
+                  <div className="p-3 bg-negative/10 border border-negative/20 font-mono text-[12px] text-negative mb-2">
+                    <p className="font-bold mb-1 flex items-center gap-1">
+                      <AlertCircle className="w-4 h-4" />
+                      Missing Athlete Tokens:
+                    </p>
+                    <p className="text-[11px] mb-2 text-[#dfe2f0]">
+                      Each drafted athlete requires exactly 1.00 token to stake. Please acquire the missing tokens below:
+                    </p>
+                    <ul className="space-y-1.5 max-h-[120px] overflow-y-auto pr-1">
+                      {missingTokens.map(athlete => {
+                        const requiredCount = selectedAthletes.filter(a => a.mint === athlete.mint).length;
+                        return (
+                          <li key={athlete.mint} className="flex items-center justify-between border-b border-negative/10 pb-1 last:border-0 last:pb-0">
+                            <span>{athlete.name} (Own: {userBalances[athlete.mint]?.toFixed(2) || '0.00'} / {requiredCount.toFixed(2)})</span>
+                            <Link
+                              href={`/markets/${athlete.mint}`}
+                              className="text-primary hover:underline font-bold flex items-center gap-0.5"
+                              target="_blank"
+                            >
+                              Buy <ExternalLink className="w-3 h-3" />
+                            </Link>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                </div>
+              )}
 
               {/* Drafted Lineup */}
               <div className="px-5 py-4 border-b border-[#454932]">
                 <div className="flex items-center justify-between mb-3">
                   <h4 className="font-mono text-[11px] tracking-[0.02em] font-[500] text-[#c6c9ab] uppercase">Drafted Lineup</h4>
                 </div>
-                <div className="space-y-1.5">
-                  {selectedAthletes.slice(0, 5).map(athlete => {
+                <div className="space-y-1.5 max-h-[160px] overflow-y-auto pr-1">
+                  {selectedAthletes.map(athlete => {
                     const roleLabel = ROLE_LABELS[athlete.role];
+                    const balance = userBalances[athlete.mint] || 0;
+                    const requiredCount = selectedAthletes.filter(a => a.mint === athlete.mint).length;
+                    const hasToken = balance >= requiredCount;
                     return (
                       <div key={athlete.mint} className="flex items-center justify-between font-mono text-[13px] p-2 bg-[#181b25] border border-[#454932]">
                         <div className="flex items-center gap-2">
@@ -1050,15 +1283,12 @@ function ContestDetailContent() {
                           </span>
                           <span className="font-heading text-[13px] font-[600] text-white">{athlete.name}</span>
                         </div>
-                        <span className="font-mono text-[13px] font-[700] text-[#c6c9ab]">$0</span>
+                        <span className={`font-mono text-[12px] font-[700] ${hasToken ? 'text-positive' : 'text-negative'}`}>
+                          {hasToken ? 'Staked' : 'Missing'}
+                        </span>
                       </div>
                     );
                   })}
-                  {selectedAthletes.length > 5 && (
-                    <button className="w-full font-mono text-[12px] font-[700] text-primary text-center pt-1 hover:underline uppercase tracking-wider">
-                      View Full Lineup ({selectedAthletes.length - 5} more)
-                    </button>
-                  )}
                 </div>
               </div>
 
@@ -1067,22 +1297,20 @@ function ContestDetailContent() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between font-mono text-[13px]">
                     <span className="text-[#c6c9ab]">Available Balance</span>
-                    <span className="font-[700] text-[#dfe2f0]">1,245.50 USDC</span>
+                    <span className="font-[700] text-[#dfe2f0]">
+                      {checkingBalances ? 'Loading...' : `${usdcBalance.toFixed(2)} USDC`}
+                    </span>
                   </div>
                   <div className="flex items-center justify-between font-mono text-[13px]">
-                    <span className="text-[#c6c9ab]">Entry Fee</span>
-                    <span className="font-[700] text-negative">- 25.00 USDC</span>
+                    <span className="text-[#c6c9ab]">Staking Requirement</span>
+                    <span className="font-[700] text-[#dfe2f0]">11.00 Athlete Tokens</span>
                   </div>
                   <div className="flex items-center justify-between font-mono text-[13px]">
                     <div className="flex items-center gap-1">
-                      <span className="text-[#c6c9ab]">Network Fee</span>
+                      <span className="text-[#c6c9ab]">Est. Network Fee</span>
                       <AlertCircle className="w-3 h-3 text-[#c6c9ab]/60" />
                     </div>
-                    <span className="text-[#c6c9ab]">~0.000005 SOL</span>
-                  </div>
-                  <div className="pt-2 border-t border-[#454932] flex items-center justify-between font-mono text-[14px]">
-                    <span className="font-[700] text-white">Total Deduction</span>
-                    <span className="font-[700] text-primary">25.00 USDC</span>
+                    <span className="text-[#c6c9ab]">~0.00005 SOL</span>
                   </div>
                 </div>
               </div>
@@ -1090,12 +1318,12 @@ function ContestDetailContent() {
               {/* Actions */}
               <div className="px-5 pb-5 space-y-2">
                 <Button
-                  className="w-full h-11 font-mono text-[13px] font-[700] bg-primary text-primary-foreground hover:opacity-90 transition-opacity uppercase tracking-wider"
+                  className="w-full h-11 font-mono text-[13px] font-[700] bg-primary text-primary-foreground hover:opacity-90 transition-opacity uppercase tracking-wider disabled:bg-[#181b25] disabled:text-[#c6c9ab] disabled:border-[#454932] disabled:cursor-not-allowed"
                   onClick={handleEnterContest}
-                  disabled={submitting}
+                  disabled={submitting || checkingBalances || missingTokens.length > 0}
                 >
                   {submitting ? (
-                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Confirming...</>
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Entering Arena...</>
                   ) : (
                     <><Zap className="w-4 h-4 mr-2" /> Confirm Entry</>
                   )}
@@ -1119,12 +1347,8 @@ function ContestDetailContent() {
                       <span className="font-[700] text-[#dfe2f0]">Confirming Transaction...</span>
                     </div>
                     <p className="font-sans text-[12px] text-[#c6c9ab]">
-                      Awaiting confirmation on Solana mainnet.
+                      Awaiting confirmation on Solana network.
                     </p>
-                    <div className="flex items-center gap-1.5 mt-2 font-mono text-[11px] text-[#c6c9ab]">
-                      <Fingerprint className="w-3 h-3" />
-                      TxHash: <span className="font-mono">8f4k...9m2q</span>
-                    </div>
                   </div>
                 </div>
               )}

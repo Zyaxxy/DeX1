@@ -319,7 +319,7 @@ function PoolDetailContent() {
       });
       instructions.push(instruction);
 
-      const { context: { slot }, value: { blockhash } } = await getConnection().getLatestBlockhashAndContext();
+      const { context: { slot }, value: { blockhash, lastValidBlockHeight } } = await getConnection().getLatestBlockhashAndContext();
       const messageV0 = new TransactionMessage({
         payerKey: userKey,
         recentBlockhash: blockhash,
@@ -351,7 +351,11 @@ function PoolDetailContent() {
       const signature = await sendTransaction(transaction, getConnection(), {
         minContextSlot: slot,
       });
-      await getConnection().confirmTransaction(signature, 'confirmed');
+      await getConnection().confirmTransaction({
+        signature,
+        blockhash,
+        lastValidBlockHeight,
+      }, 'confirmed');
 
       toast.success(`Bought ${amount} USDC worth of ${pool.name}!`);
       setBuyAmount('');
@@ -479,7 +483,7 @@ function PoolDetailContent() {
       });
       instructions.push(instruction);
 
-      const { context: { slot }, value: { blockhash } } = await getConnection().getLatestBlockhashAndContext();
+      const { context: { slot }, value: { blockhash, lastValidBlockHeight } } = await getConnection().getLatestBlockhashAndContext();
       const messageV0 = new TransactionMessage({
         payerKey: userKey,
         recentBlockhash: blockhash,
@@ -511,7 +515,11 @@ function PoolDetailContent() {
       const signature = await sendTransaction(transaction, getConnection(), {
         minContextSlot: slot,
       });
-      await getConnection().confirmTransaction(signature, 'confirmed');
+      await getConnection().confirmTransaction({
+        signature,
+        blockhash,
+        lastValidBlockHeight,
+      }, 'confirmed');
 
       toast.success(`Sold ${amount} ${pool.name}!`);
       setSellAmount('');

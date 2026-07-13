@@ -10,7 +10,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { getConnection, ROLE_LABELS, ROLE_COLORS, getAdminKeypair, PROGRAM_ID } from '@/solana/client';
+import { ROLE_LABELS, ROLE_COLORS } from '@/solana/client';
+import { createContestAction } from '../actions';
 import { toast } from 'sonner';
 import { Search, Check, Loader2 } from 'lucide-react';
 import { usePageMeta } from '@/hooks/usePageMeta';
@@ -20,8 +21,6 @@ import type { PoolData, ContestData } from '../types';
 import { fetchPools, fetchContests } from '../data';
 
 function CreateContest() {
-  const adminKeypair = getAdminKeypair();
-  const publicKey = adminKeypair.publicKey;
   const router = useRouter();
 
   useRevolvingTitle(['Create Contest | DEXI', 'Admin | DEXI']);
@@ -87,191 +86,19 @@ function CreateContest() {
 
     setContestLoading(true);
     try {
-      const adminKeypair = getAdminKeypair();
-      const adminKey = adminKeypair.publicKey;
-      const newId = contests.length > 0 ? Math.max(...contests.map(c => c.id)) + 1 : 1;
-      const startTimeNum = Math.floor(new Date(newContestStartTime).getTime() / 1000);
-      const winnerCountNum = parseInt(newContestWinnerCount);
-      const prizeSplitArr = newContestPrizeSplit.split(',').map(s => parseInt(s.trim()) * 100);
+      toast.info('Creating contest on-chain (Address Lookup Table + Deployment)...');
+      const res = await createContestAction(
+        newContestName,
+        newContestFixtureId,
+        newContestStartTime,
+        newContestWinnerCount,
+        newContestPrizeSplit,
+        Array.from(selectedPlayerMints),
+        contests.length
+      );
 
-      const [configPda] = await findConfigPda();
-      const configInfo = await getConnection().getAccountInfo(new PublicKey(configPda));
-      const configData = decodeAdminConfig({ address: configPda, data: new Uint8Array(Buffer.from(configInfo!.data)), exists: true } as any).data;
-      const usdcMint = new PublicKey(configData.usdcMint);
-      const usdcMintInfo = await getConnection().getAccountInfo(usdcMint);
-      const usdcTokenProgramId = usdcMintInfo?.owner || new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
-
-      const [contestPda] = await findContestPda({ id: newId });
-      const contestKey = new PublicKey(contestPda);
-      const escrowVault = getAssociatedTokenAddressSync(usdcMint, contestKey, true, usdcTokenProgramId);
-
-      const escrowInfo = await getConnection().getAccountInfo(escrowVault);
-      if (!escrowInfo) {
-        try {
-          const { blockhash } = await getConnection().getLatestBlockhash();
-          const msg = new TransactionMessage({ payerKey: adminKey, recentBlockhash: blockhash, instructions: [createAssociatedTokenAccountInstruction(adminKey, escrowVault, contestKey, usdcMint, usdcTokenProgramId)] }).compileToV0Message();
-          const tx = new VersionedTransaction(msg);
-          tx.sign([adminKeypair]);
-          const ataSig = await getConnection().sendRawTransaction(tx.serialize(), { skipPreflight: true });
-          const ataResult = await getConnection().confirmTransaction(ataSig, 'confirmed');
-          if (ataResult?.value?.err) throw new Error(`Escrow ATA creation failed: ${JSON.stringify(ataResult.value.err)}`);
-        } catch (err: any) {
-          console.error('ATA creation failed:', err);
-          throw err;
-        }
-      }
-
-      toast.info('Building transactions...');
-      const txs: VersionedTransaction[] = [];
-      const txMeta: { type: 'lut' | 'ext' | 'ata' | 'contest', blockhash: string, lastValidBlockHeight: number }[] = [];
-
-      // 1. LUT Creation
-      const slot = await getConnection().getSlot();
-      const [createIx, lutAddress] = AddressLookupTableProgram.createLookupTable({ authority: adminKey, payer: adminKey, recentSlot: Math.max(slot - 10, 0) });
-      const { blockhash: lutBlockhash, lastValidBlockHeight: lutBlockHeight } = await getConnection().getLatestBlockhash('confirmed');
-      const lutMsg = new TransactionMessage({ payerKey: adminKey, recentBlockhash: lutBlockhash, instructions: [createIx] }).compileToV0Message();
-      txs.push(new VersionedTransaction(lutMsg));
-      txMeta.push({ type: 'lut', blockhash: lutBlockhash, lastValidBlockHeight: lutBlockHeight });
-
-      // 2. LUT Population
-      const staticAddresses: PublicKey[] = [
-        new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'),
-        new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL'),
-        SystemProgram.programId, usdcMint, new PublicKey(configPda), contestKey, escrowVault,
-      ];
-
-      const playerMints: string[] = [];
-      const remainingAccounts: any[] = [];
-      const vaultsToCheck: PublicKey[] = [];
-      const vaultMints: PublicKey[] = [];
-      const vaultPrograms: PublicKey[] = [];
-
-      for (const p of pools) {
-        if (!selectedPlayerMints.has(p.mint)) continue;
-        const mintKey = new PublicKey(p.mint);
-        playerMints.push(mintKey.toBase58());
-        const poolKey = new PublicKey(PublicKey.findProgramAddressSync([Buffer.from('pool'), mintKey.toBuffer()], PROGRAM_ID)[0]);
-        const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
-        const vault = getAssociatedTokenAddressSync(mintKey, contestKey, true, TOKEN_PROGRAM_ID);
-        staticAddresses.push(mintKey, vault, poolKey);
-        remainingAccounts.push({ pubkey: vault, isWritable: true, isSigner: false }, { pubkey: mintKey, isWritable: false, isSigner: false });
-        vaultsToCheck.push(vault);
-        vaultMints.push(mintKey);
-        vaultPrograms.push(TOKEN_PROGRAM_ID);
-      }
-
-      const batchSize = 20;
-      for (let i = 0; i < staticAddresses.length; i += batchSize) {
-        const chunk = staticAddresses.slice(i, i + batchSize);
-        const extendIx = AddressLookupTableProgram.extendLookupTable({ payer: adminKey, authority: adminKey, lookupTable: lutAddress, addresses: chunk });
-        const { blockhash: extBlockhash, lastValidBlockHeight: extBlockHeight } = await getConnection().getLatestBlockhash('confirmed');
-        txs.push(new VersionedTransaction(new TransactionMessage({ payerKey: adminKey, recentBlockhash: extBlockhash, instructions: [extendIx] }).compileToV0Message()));
-        txMeta.push({ type: 'ext', blockhash: extBlockhash, lastValidBlockHeight: extBlockHeight });
-      }
-
-      // Pre-create ATAs
-      const ataIxs: TransactionInstruction[] = [];
-      const vaultInfos: any[] = [];
-      for (let i = 0; i < vaultsToCheck.length; i += 100) {
-        vaultInfos.push(...await getConnection().getMultipleAccountsInfo(vaultsToCheck.slice(i, i + 100)));
-      }
-
-      for (let i = 0; i < vaultInfos.length; i++) {
-        if (!vaultInfos[i]) {
-          ataIxs.push(createAssociatedTokenAccountInstruction(adminKey, vaultsToCheck[i], contestKey, vaultMints[i], vaultPrograms[i]));
-        }
-      }
-
-      const ataBatchSize = 10;
-      for (let i = 0; i < ataIxs.length; i += ataBatchSize) {
-        const chunk = ataIxs.slice(i, i + ataBatchSize);
-        const { blockhash: ataBlockhash, lastValidBlockHeight: ataBlockHeight } = await getConnection().getLatestBlockhash('confirmed');
-        txs.push(new VersionedTransaction(new TransactionMessage({ payerKey: adminKey, recentBlockhash: ataBlockhash, instructions: chunk }).compileToV0Message()));
-        txMeta.push({ type: 'ata', blockhash: ataBlockhash, lastValidBlockHeight: ataBlockHeight });
-      }
-
-      // 3. Contest Creation Instruction
-      const createIxFixed = getCreateContestInstruction({
-        id: newId, startTime: startTimeNum as any, winnerCount: winnerCountNum, prizeSplit: prizeSplitArr,
-        playerMints: playerMints as any[], addressLookupTable: lutAddress.toBase58() as any,
-        name: newContestName,
-        fixtureId: newContestFixtureId || '',
-        config: configPda.toString() as any, contest: contestKey.toBase58() as any,
-        usdcMint: usdcMint.toBase58() as any, escrowVault: escrowVault.toBase58() as any,
-        admin: adminKey.toBase58() as any,
-      });
-
-      const instruction = new TransactionInstruction({
-        programId: new PublicKey(createIxFixed.programAddress),
-        keys: [...createIxFixed.accounts.map(a => ({ pubkey: new PublicKey(a.address), isSigner: a.role >= 2, isWritable: a.role === 1 || a.role === 3 })), ...remainingAccounts],
-        data: Buffer.from(createIxFixed.data)
-      });
-
-      toast.info('Signing setup transactions...');
-      const signedSetupTxs: VersionedTransaction[] = txs.map(tx => {
-        tx.sign([adminKeypair]);
-        return tx;
-      });
-
-      const lutTxs = signedSetupTxs.filter((_, i) => txMeta[i].type === 'lut');
-      const ataTxs = signedSetupTxs.filter((_, i) => txMeta[i].type === 'ata');
-      const extTxs = signedSetupTxs.filter((_, i) => txMeta[i].type === 'ext');
-
-      toast.info('Initializing Vaults & LUT...');
-      const batch1Promises = [...lutTxs, ...ataTxs].map(async (tx) => {
-        const sig = await getConnection().sendRawTransaction(tx.serialize(), { skipPreflight: true });
-        const txIndex = signedSetupTxs.indexOf(tx);
-        const result = await getConnection().confirmTransaction({ signature: sig, blockhash: txMeta[txIndex].blockhash, lastValidBlockHeight: txMeta[txIndex].lastValidBlockHeight }, 'confirmed');
-        if (result?.value?.err) throw new Error(`Setup tx failed: ${JSON.stringify(result.value.err)}`);
-      });
-      await Promise.all(batch1Promises);
-
-      let lookupTableAccount: any | null = null;
-      if (extTxs.length > 0) {
-        toast.info('Populating Lookup Table...');
-        const batch2Promises = extTxs.map(async (tx) => {
-          const sig = await getConnection().sendRawTransaction(tx.serialize(), { skipPreflight: true });
-          const txIndex = signedSetupTxs.indexOf(tx);
-          const result = await getConnection().confirmTransaction({ signature: sig, blockhash: txMeta[txIndex].blockhash, lastValidBlockHeight: txMeta[txIndex].lastValidBlockHeight }, 'confirmed');
-          if (result?.value?.err) throw new Error(`LUT extend tx failed: ${JSON.stringify(result.value.err)}`);
-        });
-        await Promise.all(batch2Promises);
-        const { AddressLookupTableAccount: LUTAcc } = await import('@solana/web3.js');
-        let lutInfo = null;
-        for (let retry = 0; retry < 10; retry++) {
-          lutInfo = await getConnection().getAccountInfo(lutAddress);
-          if (lutInfo) break;
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-        if (lutInfo) {
-          const lutState = LUTAcc.deserialize(lutInfo.data);
-          lookupTableAccount = new LUTAcc({ key: lutAddress, state: lutState });
-        } else {
-          console.error('LUT not found on chain after retries');
-        }
-      }
-
-      toast.info('Deploying Contest...');
-
-      let contestSig: string | null = null;
-      for (let attempt = 0; attempt < 3; attempt++) {
-        const { blockhash: bh, lastValidBlockHeight } = await getConnection().getLatestBlockhash('confirmed');
-        const cuLimitIx = ComputeBudgetProgram.setComputeUnitLimit({ units: 1_000_000 });
-        const contestMsg = new TransactionMessage({ payerKey: adminKey, recentBlockhash: bh, instructions: [cuLimitIx, instruction] }).compileToV0Message(lookupTableAccount ? [lookupTableAccount] : []);
-        const contestTx = new VersionedTransaction(contestMsg);
-        contestTx.sign([adminKeypair]);
-
-        contestSig = await getConnection().sendRawTransaction(contestTx.serialize(), { skipPreflight: true });
-        try {
-          const contestResult = await getConnection().confirmTransaction({ signature: contestSig, blockhash: bh, lastValidBlockHeight }, 'confirmed');
-          if (contestResult?.value?.err) throw new Error(`Contest creation failed: ${JSON.stringify(contestResult.value.err)}`);
-          break;
-        } catch (e) {
-          const isExpired = e instanceof Error && e.message.includes('block height exceeded');
-          if (!isExpired) throw e;
-          if (attempt < 2) { toast.info(`Retrying contest creation (attempt ${attempt + 2})...`); continue; }
-          throw e;
-        }
+      if (!res.success) {
+        throw new Error(res.error);
       }
 
       toast.success(`Contest "${newContestName}" created!`);
@@ -280,9 +107,9 @@ function CreateContest() {
       setNewContestStartTime('');
       setContestDialogOpen(false);
       router.push('/admin/contests');
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      toast.error('Failed to create contest');
+      toast.error('Failed to create contest: ' + error.message);
     } finally {
       setContestLoading(false);
     }

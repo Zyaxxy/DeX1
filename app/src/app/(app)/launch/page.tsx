@@ -337,7 +337,7 @@ export default function LaunchPage() {
         mintUsdcToPoolIx
       ];
 
-      const { context: { slot }, value: { blockhash } } = await getConnection().getLatestBlockhashAndContext();
+      const { context: { slot }, value: { blockhash, lastValidBlockHeight } } = await getConnection().getLatestBlockhashAndContext();
       const msg = new TransactionMessage({
         payerKey: adminKey,
         recentBlockhash: blockhash,
@@ -351,7 +351,11 @@ export default function LaunchPage() {
       const sig = await sendTransaction(tx, getConnection(), {
         minContextSlot: slot,
       });
-      await getConnection().confirmTransaction(sig, 'confirmed');
+      await getConnection().confirmTransaction({
+        signature: sig,
+        blockhash,
+        lastValidBlockHeight,
+      }, 'confirmed');
 
       toast.success('Token launched successfully!', { id: 'launch' });
       

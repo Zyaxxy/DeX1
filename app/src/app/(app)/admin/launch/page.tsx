@@ -2,25 +2,19 @@
 
 import dynamic from 'next/dynamic';
 import { useState } from 'react';
-import { PublicKey, SystemProgram, TransactionMessage, VersionedTransaction, TransactionInstruction } from '@solana/web3.js';
-import { createInitializeMintInstruction, createAssociatedTokenAccountInstruction, getAssociatedTokenAddressSync, createMintToInstruction, MINT_SIZE, TOKEN_PROGRAM_ID } from '@solana/spl-token';
-import { createCreateMetadataAccountV3Instruction } from '@metaplex-foundation/mpl-token-metadata';
-import { getCreatePoolInstruction, findConfigPda, decodeAdminConfig } from '@dexi/sdk';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { getConnection, ROLE_LABELS, ROLE_COLORS, getAdminKeypair, PROGRAM_ID } from '@/solana/client';
+import { ROLE_LABELS, ROLE_COLORS } from '@/solana/client';
 import { toast } from 'sonner';
 import { Plus, Loader2, Rocket } from 'lucide-react';
 import { usePageMeta } from '@/hooks/usePageMeta';
 import { useRevolvingTitle } from '@/hooks/useRevolvingTitle';
 
 function LaunchToken() {
-  const adminKeypair = getAdminKeypair();
-  const publicKey = adminKeypair.publicKey;
 
   useRevolvingTitle(['Launch Token | DEXI', 'Admin | DEXI']);
   usePageMeta({
@@ -47,131 +41,27 @@ function LaunchToken() {
     }
     setLoading(true);
     try {
-      let metadataUrl = '';
+      const formData = new FormData();
+      formData.append('name', name);
+      formData.append('ticker', ticker);
+      formData.append('role', role);
+      formData.append('desc', desc);
+      formData.append('liquidity', String(liquidity));
       if (imageFile) {
-        const { WebUploader } = await import("@irys/web-upload");
-        const { WebSolana } = await import("@irys/web-upload-solana");
-        const irysWallet = {
-          publicKey: adminKeypair.publicKey,
-          signTransaction: (tx: any) => {
-            tx.sign([adminKeypair]);
-            return Promise.resolve(tx);
-          },
-          signAllTransactions: (txs: any[]) => {
-            txs.forEach(tx => tx.sign([adminKeypair]));
-            return Promise.resolve(txs);
-          },
-          signMessage: async (message: Uint8Array) => {
-            const nacl = await import('tweetnacl');
-            return nacl.default.sign.detached(message, adminKeypair.secretKey);
-          },
-        };
-        const irys = await WebUploader(WebSolana).withProvider(irysWallet).withRpc(getConnection().rpcEndpoint).devnet().build();
-        const irysGateway = "https://gateway.irys.xyz";
-
-        toast.loading('Funding Irys node...', { id: 'launch' });
-        const estimatedMetadata = JSON.stringify({ name, symbol: ticker, description: desc, image: `${irysGateway}/placeholder` });
-        const totalSize = imageFile.size + new Blob([estimatedMetadata]).size + 1024;
-        const price = await irys.getPrice(totalSize);
-        const balance = await irys.getLoadedBalance();
-        if (price.isGreaterThan(balance)) {
-          await irys.fund(price.minus(balance));
-        }
-
-        toast.loading('Uploading image...', { id: 'launch' });
-        const imageTags = [{ name: "Content-Type", value: imageFile.type }];
-        const imageReceipt = await irys.uploadFile(imageFile, { tags: imageTags });
-        toast.dismiss('launch');
-        const imageUrl = `${irysGateway}/${imageReceipt.id}`;
-
-        const metadataObj = { name, symbol: ticker, description: desc, image: imageUrl };
-
-        toast.loading('Uploading metadata...', { id: 'launch' });
-        const metadataTags = [{ name: "Content-Type", value: "application/json" }];
-        const metadataReceipt = await irys.upload(JSON.stringify(metadataObj), { tags: metadataTags });
-        toast.dismiss('launch');
-        metadataUrl = `${irysGateway}/${metadataReceipt.id}`;
+        formData.append('image', imageFile);
       }
 
-      const mintKeypair = (await import('@solana/web3.js')).Keypair.generate();
-      const decimals = 6;
-      const lamports = await getConnection().getMinimumBalanceForRentExemption(MINT_SIZE);
-
-      const createAccountIx = SystemProgram.createAccount({
-        fromPubkey: publicKey, newAccountPubkey: mintKeypair.publicKey,
-        space: MINT_SIZE, lamports, programId: TOKEN_PROGRAM_ID,
+      toast.loading('Uploading assets and deploying token...', { id: 'launch' });
+      const res = await fetch('/api/admin/launch', {
+        method: 'POST',
+        body: formData,
       });
+      const result = await res.json();
+      toast.dismiss('launch');
 
-      const initializeMintIx = createInitializeMintInstruction(
-        mintKeypair.publicKey, decimals, publicKey, publicKey, TOKEN_PROGRAM_ID
-      );
-
-      const MPL_PROGRAM_ID = new PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s");
-      const [metadataPda] = PublicKey.findProgramAddressSync(
-        [Buffer.from("metadata"), MPL_PROGRAM_ID.toBuffer(), mintKeypair.publicKey.toBuffer()],
-        MPL_PROGRAM_ID
-      );
-
-      const initializeMetadataIx = createCreateMetadataAccountV3Instruction(
-        { metadata: metadataPda, mint: mintKeypair.publicKey, mintAuthority: publicKey, payer: publicKey, updateAuthority: publicKey },
-        { createMetadataAccountArgsV3: { data: { name, symbol: ticker, uri: metadataUrl, sellerFeeBasisPoints: 0, creators: null, collection: null, uses: null }, isMutable: true, collectionDetails: null } }
-      );
-
-      const [configPda] = await findConfigPda();
-      const configInfo = await getConnection().getAccountInfo(new PublicKey(configPda));
-      if (!configInfo) throw new Error("Config not found");
-      const configData = decodeAdminConfig({ address: configPda as any, data: new Uint8Array(Buffer.from(configInfo.data)), exists: true } as any).data;
-      const usdcMint = new PublicKey(configData.usdcMint);
-      const usdcMintInfo = await getConnection().getAccountInfo(usdcMint);
-      const usdcTokenProgramId = usdcMintInfo?.owner || TOKEN_PROGRAM_ID;
-
-      const [poolPda] = PublicKey.findProgramAddressSync([Buffer.from('pool'), mintKeypair.publicKey.toBuffer()], PROGRAM_ID);
-      const poolTokenVault = getAssociatedTokenAddressSync(mintKeypair.publicKey, poolPda, true, TOKEN_PROGRAM_ID);
-      const poolUsdcVault = getAssociatedTokenAddressSync(usdcMint, poolPda, true, usdcTokenProgramId);
-
-      const createTokenAtaIx = createAssociatedTokenAccountInstruction(publicKey, poolTokenVault, poolPda, mintKeypair.publicKey, TOKEN_PROGRAM_ID);
-      const createUsdcAtaIx = createAssociatedTokenAccountInstruction(publicKey, poolUsdcVault, poolPda, usdcMint, usdcTokenProgramId);
-
-      const roleNum = parseInt(role);
-      const createPoolIxInfo = getCreatePoolInstruction({
-        name, role: roleNum,
-        config: configPda as any, pool: poolPda.toBase58() as any,
-        mint: mintKeypair.publicKey.toBase58() as any,
-        tokenVault: poolTokenVault.toBase58() as any,
-        usdcVault: poolUsdcVault.toBase58() as any,
-        poolAuthority: poolPda.toBase58() as any,
-        admin: publicKey.toBase58() as any,
-        tokenProgram: TOKEN_PROGRAM_ID.toBase58() as any,
-        associatedTokenProgram: 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL' as any,
-        systemProgram: SystemProgram.programId.toBase58() as any,
-      });
-
-      const createPoolIx = new TransactionInstruction({
-        programId: new PublicKey(createPoolIxInfo.programAddress),
-        keys: createPoolIxInfo.accounts.map(a => ({ pubkey: new PublicKey(a.address), isSigner: a.role >= 2, isWritable: a.role === 1 || a.role === 3 })),
-        data: Buffer.from(createPoolIxInfo.data)
-      });
-
-      const mintTokensToPoolIx = createMintToInstruction(mintKeypair.publicKey, poolTokenVault, publicKey, BigInt(1000000 * (10 ** decimals)), [], TOKEN_PROGRAM_ID);
-      const mintUsdcToPoolIx = createMintToInstruction(usdcMint, poolUsdcVault, publicKey, BigInt(liquidity * (10 ** 6)));
-
-      const tokenVaultInfo = await getConnection().getAccountInfo(poolTokenVault);
-      const usdcVaultInfo = await getConnection().getAccountInfo(poolUsdcVault);
-
-      const instructions = [
-        createAccountIx, initializeMintIx, initializeMetadataIx,
-        ...(tokenVaultInfo ? [] : [createTokenAtaIx]),
-        ...(usdcVaultInfo ? [] : [createUsdcAtaIx]),
-        createPoolIx, mintTokensToPoolIx, mintUsdcToPoolIx,
-      ];
-
-      const { blockhash } = await getConnection().getLatestBlockhash();
-      const msg = new TransactionMessage({ payerKey: publicKey, recentBlockhash: blockhash, instructions }).compileToV0Message();
-      const tx = new VersionedTransaction(msg);
-      tx.sign([mintKeypair, adminKeypair]);
-      const sig = await getConnection().sendRawTransaction(tx.serialize());
-
-      await getConnection().confirmTransaction(sig, 'confirmed');
+      if (!res.ok || result.error) {
+        throw new Error(result.error || 'Server error during launch');
+      }
 
       toast.success(`${name} token launched + pool created!`, { id: 'launch' });
       setName(''); setTicker(''); setDesc(''); setImagePreview(''); setLiquidity(100);

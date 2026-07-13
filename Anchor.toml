@@ -10,7 +10,7 @@ skip-lint = false
 dexi = "HLqcxyy9DrVH7DJ2NqTza8Vq6GWB4aUuUSjFWdq5EAmt"
 
 [provider]
-cluster = "${RPC_URL}"
+cluster = "devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]

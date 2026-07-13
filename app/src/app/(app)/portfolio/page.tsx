@@ -31,6 +31,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { WalletButton } from '@/solana/components/wallet-button';
+import PortfolioChart from '@/components/charts/portfolio-chart';
 import {
   ROLE_LABELS,
   ROLE_COLORS,
@@ -489,17 +490,9 @@ export default function PortfolioPage() {
                       ))}
                     </div>
                   </div>
-                  {/* Chart Placeholder */}
-                  <div className="flex-1 w-full bg-[#0a0e18] border border-[#454932] rounded-lg relative overflow-hidden flex items-end">
-                    <div className="absolute inset-0 flex flex-col justify-between opacity-10 pointer-events-none p-4">
-                      {[0, 1, 2, 3].map((i) => (
-                        <div key={i} className="border-b border-white w-full h-0" />
-                      ))}
-                    </div>
-                    <div
-                      className="w-full h-3/4 bg-gradient-to-t from-[rgba(74,222,128,0.1)] to-transparent border-t-2 border-[#4ade80] rounded-t-sm"
-                      style={{ clipPath: 'polygon(0 80%, 20% 70%, 40% 90%, 60% 40%, 80% 50%, 100% 20%, 100% 100%, 0% 100%)' }}
-                    />
+                  {/* Portfolio Chart */}
+                  <div className="flex-1 w-full bg-[#0a0e18] border border-[#454932] rounded-lg relative overflow-hidden p-2 flex items-center justify-center">
+                    <PortfolioChart currentValue={totalPortfolioValue} height={200} />
                   </div>
                 </div>
 

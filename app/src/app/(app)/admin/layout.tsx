@@ -1,22 +1,12 @@
-'use client';
-
-import { usePathname } from 'next/navigation';
 import { WalletButton } from '@/solana/components/wallet-button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import Link from 'next/link';
 import { getAdminKeypair } from '@/solana/client';
+import { AdminTabs } from './AdminTabs';
 
-const adminLinks = [
-  { name: 'Dashboard', href: '/admin' },
-  { name: 'Launch Token', href: '/admin/launch' },
-  { name: 'Markets', href: '/admin/markets' },
-  { name: 'Create Contest', href: '/admin/create-contest' },
-  { name: 'Contests', href: '/admin/contests' },
-];
+export const maxDuration = 60;
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
-
   let envKeypairConfigured = false;
   try {
     getAdminKeypair();
@@ -43,7 +33,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <CardHeader className="text-center">
                 <CardTitle className="text-3xl">Admin Key Not Configured</CardTitle>
                 <CardDescription>
-                  Set NEXT_PUBLIC_ADMIN_PRIVATE_KEY in your .env file
+                  Set ADMIN_PRIVATE_KEY in your .env file
                 </CardDescription>
               </CardHeader>
             </Card>
@@ -78,24 +68,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <h1 className="text-3xl font-bold tracking-tight font-heading">Admin Panel</h1>
             <p className="text-muted-foreground text-sm">Manage pools, contests, tokens, and protocol settings</p>
           </div>
-          <nav className="flex gap-2 flex-wrap">
-            {adminLinks.map(link => {
-              const isActive = pathname === link.href;
-              return (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className={`px-3 py-1.5 text-sm font-semibold rounded-md transition-colors ${
-                    isActive
-                      ? 'bg-primary text-primary-foreground'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-                  }`}
-                >
-                  {link.name}
-                </Link>
-              );
-            })}
-          </nav>
+          <AdminTabs />
         </div>
         {children}
       </div>

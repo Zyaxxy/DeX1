@@ -9,7 +9,7 @@ crate-type = ["cdylib", "lib"]
 name = "dexi"
 
 [features]
-default = ["idl-build"]
+default = []
 cpi = ["no-entrypoint"]
 no-entrypoint = []
 no-idl = []

@@ -3,11 +3,22 @@ import idl from '@dexi/sdk/src/idl/dexi.json';
 
 export const PROGRAM_ID = new PublicKey(idl.address as string);
 export const USDC_DECIMALS = 6;
+export const TOKEN_DECIMALS = 6;
 
 
 export const CLUSTER = process.env.NEXT_PUBLIC_CLUSTER || 'devnet';
-export const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 
-  (CLUSTER === 'devnet' ? 'https://api.devnet.solana.com' : 'http://localhost:3000');
+
+const getAbsoluteRpcUrl = () => {
+  const envUrl = process.env.RPC_URL;
+  if (envUrl && envUrl.startsWith('http')) {
+    return envUrl;
+  }
+  return CLUSTER === 'devnet' ? 'https://api.devnet.solana.com' : 'http://localhost:3000';
+};
+
+export const RPC_URL = typeof window === 'undefined'
+  ? getAbsoluteRpcUrl()
+  : (typeof window !== 'undefined' ? window.location.origin + '/api/rpc' : '/api/rpc');
 
 export const ROLE_REQUIREMENTS = {
   GK: 1,

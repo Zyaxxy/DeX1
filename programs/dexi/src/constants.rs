@@ -29,5 +29,5 @@ pub const REQUIRED_MID: u8 = 2;
 pub const REQUIRED_FWD: u8 = 2;
 
 // ── Entry staking ──────────────────────────────────────────────────────────────
-/// Each athlete slot requires exactly 1 token to be staked.
-pub const ENTRY_TOKEN_AMOUNT: u64 = 100_000;
+/// Each athlete slot requires exactly 1 token to be staked (1 token = 10^6 raw units).
+pub const ENTRY_TOKEN_AMOUNT: u64 = 1_000_000;
