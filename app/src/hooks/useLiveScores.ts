@@ -14,10 +14,15 @@ import {
 import type { EnrichedEntry } from './useUserEntries';
 
 const POINTS = {
-  goal: 20,
+  goal: { 0: 40, 1: 30, 2: 20, 3: 10 },
   assist: 5,
   save: 5,
+  cleanSheet: 10,
 };
+
+function getGoalPoints(role: number): number {
+  return POINTS.goal[role as keyof typeof POINTS.goal] || 10;
+}
 
 const POLL_INTERVAL = 30000;
 
@@ -114,25 +119,47 @@ export function useLiveScores(entries: EnrichedEntry[]): UseLiveScoresResult {
         (data.statusSoccerId === 'F' || data.gameState === 'Ended' || data.statusId === 'F') ? 'finished' :
         (data.statusSoccerId === 'H' || data.gameState === 'InPlay' || data.statusId === 'H') ? 'live' : 'upcoming';
 
-      const playerPoints = new Map<string, number>();
+      const playerEvents = new Map<string, string[]>();
       for (const event of rawEvents) {
-        const action = (event.action || '').toLowerCase();
+        const action = String(event.action || '');
         const playerId = String(event.playerId);
         if (!playerId || !action) continue;
 
-        let pts = playerPoints.get(playerId) || 0;
-        if (action.includes('goal')) pts += POINTS.goal;
-        if (action.includes('assist')) pts += POINTS.assist;
-        if (action.includes('save')) pts += POINTS.save;
-        playerPoints.set(playerId, pts);
+        if (!playerEvents.has(playerId)) {
+          playerEvents.set(playerId, []);
+        }
+        playerEvents.get(playerId)!.push(action.toLowerCase());
       }
+
+      const participant1Score = data.score?.Participant1?.Score || 0;
+      const participant2Score = data.score?.Participant2?.Score || 0;
 
       const athleteScores: { [key: string]: number } = {};
       let totalScore = 0;
 
       for (const athlete of entry.athletes) {
         const playerId = poolMap.get(athlete.mint);
-        const athleteScore = playerPoints.get(playerId || '') || 0;
+        const role = athlete.role;
+        const events = playerEvents.get(playerId || '') || [];
+
+        let athleteScore = 0;
+        for (const action of events) {
+          if (action.includes('goal')) {
+            athleteScore += getGoalPoints(role);
+          }
+          if (action.includes('assist')) {
+            athleteScore += POINTS.assist;
+          }
+          if (action.includes('save')) {
+            if (role === 0) athleteScore += POINTS.save;
+          }
+        }
+
+        const opponentScore = role === 0 ? participant2Score : participant1Score;
+        if (opponentScore === 0 && (role === 0 || role === 1)) {
+          athleteScore += POINTS.cleanSheet;
+        }
+
         athleteScores[athlete.mint] = athleteScore;
         totalScore += athleteScore;
       }

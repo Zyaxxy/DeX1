@@ -44,6 +44,7 @@ interface ContestData {
   totalMintCount: number;
   processedMintCount: number;
   escrowVault: PublicKey;
+  fixtureId: string;
 }
 
 interface ScoredEntry {
@@ -224,7 +225,7 @@ class DexiKeeper {
     scoredEntries.sort((a, b) => b.score - a.score);
     console.log('Top 3 Entries:', scoredEntries.slice(0, 3).map(e => `${e.pubkey.toBase58()}: ${e.score} pts`));
 
-    const isMatchFinished = await this.checkIfMatchFinished(contest.id);
+    const isMatchFinished = await this.checkIfMatchFinished(contest.fixtureId || String(contest.id));
     if (!isMatchFinished) {
       console.log('   ⏳ Match is still ongoing, postponing settlement...');
       return;
@@ -372,12 +373,29 @@ class DexiKeeper {
 
   // ── TxLINE scoring ───────────────────────────────────────────────────────────
 
+  private roleToIndex(role: any): number {
+    if (typeof role === 'number') return role;
+    if (typeof role === 'object') {
+      if ('GK' in role) return 0;
+      if ('DEF' in role) return 1;
+      if ('MID' in role) return 2;
+      if ('FWD' in role) return 3;
+    }
+    return 0;
+  }
+
+  private getGoalPoints(roleIndex: number): number {
+    const goalPoints = [40, 30, 20, 10];
+    return goalPoints[roleIndex] || 10;
+  }
+
   private async calculateScoresFromTxline(contest: ContestData): Promise<ScoredEntry[]> {
     const entries = await this.getEntriesForContest(contest.pubkey);
     if (entries.length === 0) return [];
 
-    const fixtureId = contest.id;
+    const fixtureId = contest.fixtureId || String(contest.id);
 
+    let txlineData: any = null;
     let txlineEvents: any[] = [];
     try {
       const response = await fetch(`${this.txlineBaseUrl}/api/scores/snapshot/${fixtureId}?asOf=${Date.now()}`, {
@@ -388,14 +406,15 @@ class DexiKeeper {
         },
       });
       if (response.ok) {
-        const data: any = await response.json();
-        txlineEvents = Array.isArray(data) ? data : (data.events || []);
+        txlineData = await response.json();
+        txlineEvents = Array.isArray(txlineData) ? txlineData : (txlineData.events || []);
       }
     } catch (e) {
       console.error(`Error fetching TxLINE snapshot for fixture ${fixtureId}:`, e);
     }
 
     const playerPoints = new Map<string, number>();
+    const playerRoles = new Map<string, number>();
 
     for (const event of txlineEvents) {
       const action = event.action?.toLowerCase();
@@ -415,6 +434,9 @@ class DexiKeeper {
       const athletes: string[] = entryData.athletes;
 
       let totalScore = 0;
+      const opponentScore = txlineData?.score?.Participant2?.Score || txlineData?.score?.Participant1?.Score || 0;
+      const cleanSheet = opponentScore === 0;
+
       for (const athleteAddr of athletes) {
         const athleteMint = new PublicKey(athleteAddr);
         const poolAddress = PublicKey.findProgramAddressSync(
@@ -424,7 +446,32 @@ class DexiKeeper {
         try {
           const poolData = await this.fetchAthletePool(poolAddress);
           const playerId = poolData.name;
-          totalScore += playerPoints.get(playerId) || 0;
+          const roleIndex = this.roleToIndex(poolData.role);
+
+          const eventPoints = playerPoints.get(playerId) || 0;
+
+          let athleteScore = 0;
+          for (const event of txlineEvents) {
+            const action = event.action?.toLowerCase();
+            const eventPlayerId = event.playerId?.toString();
+            if (eventPlayerId !== playerId || !action) continue;
+
+            if (action.includes('goal')) {
+              athleteScore += this.getGoalPoints(roleIndex);
+            }
+            if (action.includes('assist')) {
+              athleteScore += 5;
+            }
+            if (action.includes('save')) {
+              if (roleIndex === 0) athleteScore += 5;
+            }
+          }
+
+          if (cleanSheet && (roleIndex === 0 || roleIndex === 1)) {
+            athleteScore += 10;
+          }
+
+          totalScore += athleteScore;
         } catch {
           // pool might not exist
         }
@@ -435,7 +482,7 @@ class DexiKeeper {
     return scored;
   }
 
-  private async checkIfMatchFinished(fixtureId: number): Promise<boolean> {
+  private async checkIfMatchFinished(fixtureId: string): Promise<boolean> {
     try {
       const response = await fetch(`${this.txlineBaseUrl}/api/scores/snapshot/${fixtureId}?asOf=${Date.now()}`, {
         headers: {
@@ -493,6 +540,7 @@ function contestDataFromSdk(decoded: any, pubkey: PublicKey): ContestData {
     totalMintCount: decoded.totalMintCount,
     processedMintCount: decoded.processedMintCount,
     escrowVault: new PublicKey(decoded.escrowVault),
+    fixtureId: String(decoded.fixtureId || ''),
   };
 }
 

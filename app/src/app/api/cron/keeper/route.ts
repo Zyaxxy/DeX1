@@ -43,6 +43,7 @@ interface ContestData {
   totalMintCount: number;
   processedMintCount: number;
   escrowVault: PublicKey;
+  fixtureId: string;
 }
 
 // Helper to decode SDK contest structures
@@ -58,6 +59,7 @@ function contestDataFromSdk(decoded: any, pubkey: PublicKey): ContestData {
     totalMintCount: decoded.totalMintCount,
     processedMintCount: decoded.processedMintCount,
     escrowVault: new PublicKey(decoded.escrowVault),
+    fixtureId: String(decoded.fixtureId || ''),
   };
 }
 
@@ -257,8 +259,9 @@ async function handleKeeperRequest(req: NextRequest) {
 
           let isMatchFinished = false;
           try {
-            const txlineBaseUrl = 'https://txline-dev.txodds.com';
-            const response = await fetch(`${txlineBaseUrl}/api/scores/snapshot/${contest.id}?asOf=${Date.now()}`, {
+            const txlineBaseUrl = process.env.TXLINE_BASE_URL || 'https://txline-dev.txodds.com';
+            const fixtureId = contest.fixtureId || String(contest.id);
+            const response = await fetch(`${txlineBaseUrl}/api/scores/snapshot/${fixtureId}?asOf=${Date.now()}`, {
               headers: {
                 'Authorization': `Bearer ${txlineJwt}`,
                 'X-Api-Token': txlineApiToken,

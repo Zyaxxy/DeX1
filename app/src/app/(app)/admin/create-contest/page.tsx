@@ -59,12 +59,44 @@ function CreateContest() {
   const [selectedPlayerMints, setSelectedPlayerMints] = useState<Set<string>>(new Set());
   const [contestLoading, setContestLoading] = useState(false);
   const [playerPoolSearch, setPlayerPoolSearch] = useState('');
+  const [fixtures, setFixtures] = useState<any[]>([]);
+  const [fixturesLoading, setFixturesLoading] = useState(false);
+  const [fixtureSearch, setFixtureSearch] = useState('');
+  const [showFixtureDropdown, setShowFixtureDropdown] = useState(false);
 
   useEffect(() => {
     if (pools.length > 0) {
       setSelectedPlayerMints(new Set(pools.map(p => p.mint)));
     }
   }, [pools]);
+
+  useEffect(() => {
+    if (fixtureSearch.length >= 2 && !fixturesLoading) {
+      const timer = setTimeout(async () => {
+        setFixturesLoading(true);
+        try {
+          const res = await fetch(`/api/fixtures?startEpochDay=${Math.floor(Date.now() / 86400000)}`);
+          if (res.ok) {
+            const data = await res.json();
+            const items = Array.isArray(data) ? data : (data.items || []);
+            const filtered = items.filter((f: any) =>
+              f.Participant1?.toLowerCase().includes(fixtureSearch.toLowerCase()) ||
+              f.Participant2?.toLowerCase().includes(fixtureSearch.toLowerCase()) ||
+              String(f.FixtureId).includes(fixtureSearch)
+            );
+            setFixtures(filtered.slice(0, 10));
+          }
+        } catch (err) {
+          console.error('Failed to fetch fixtures:', err);
+        } finally {
+          setFixturesLoading(false);
+        }
+      }, 300);
+      return () => clearTimeout(timer);
+    } else if (fixtureSearch.length === 0) {
+      setFixtures([]);
+    }
+  }, [fixtureSearch]);
 
   const togglePlayerMint = (mint: string) => {
     setSelectedPlayerMints(prev => {
@@ -78,6 +110,10 @@ function CreateContest() {
   const handleCreateContest = async () => {
     if (!newContestStartTime || !newContestWinnerCount || !newContestPrizeSplit || !newContestName) {
       toast.error('Please fill in all fields including contest name');
+      return;
+    }
+    if (!newContestFixtureId) {
+      toast.error('Please select a fixture from TxLINE');
       return;
     }
     if (selectedPlayerMints.size === 0) { toast.error('Select at least one player pool'); return; }
@@ -135,9 +171,53 @@ function CreateContest() {
             </div>
 
             <div className="space-y-2">
-              <Label>Fixture ID (TxLINE)</Label>
-              <Input placeholder="TxLINE fixture ID for scoring" value={newContestFixtureId} onChange={e => setNewContestFixtureId(e.target.value)} />
-              <p className="text-xs text-muted-foreground">Optional — used by the keeper to fetch live match scores</p>
+              <Label>Fixture (TxLINE)</Label>
+              <div className="relative">
+                <Input 
+                  placeholder="Search matches (e.g. Germany vs France)..." 
+                  value={fixtureSearch} 
+                  onChange={e => { setFixtureSearch(e.target.value); setShowFixtureDropdown(true); }}
+                  onFocus={() => setShowFixtureDropdown(true)}
+                  onBlur={() => setTimeout(() => setShowFixtureDropdown(false), 200)}
+                />
+                {newContestFixtureId && (
+                  <button
+                    type="button"
+                    onClick={() => { setNewContestFixtureId(''); setFixtureSearch(''); }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    ×
+                  </button>
+                )}
+                {showFixtureDropdown && fixtureSearch.length >= 2 && (
+                  <div className="absolute z-50 w-full mt-1 bg-[#181b25] border border-border rounded-md shadow-lg max-h-64 overflow-auto">
+                    {fixturesLoading ? (
+                      <p className="p-3 text-sm text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin inline mr-2" />Loading matches...</p>
+                    ) : fixtures.length === 0 ? (
+                      <p className="p-3 text-sm text-muted-foreground">No matches found</p>
+                    ) : (
+                      fixtures.map((f: any) => (
+                        <button
+                          key={f.FixtureId}
+                          type="button"
+                          onClick={() => {
+                            setNewContestFixtureId(String(f.FixtureId));
+                            setFixtureSearch(`${f.Participant1} vs ${f.Participant2}`);
+                            setShowFixtureDropdown(false);
+                          }}
+                          className="w-full p-3 text-left hover:bg-primary/10 border-b border-border last:border-b-0"
+                        >
+                          <p className="text-sm font-medium">{f.Participant1} vs {f.Participant2}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {new Date(f.StartTime).toLocaleString()} • ID: {f.FixtureId}
+                          </p>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">Required — used by keeper to fetch live scores and calculate fantasy points</p>
             </div>
 
             <div className="space-y-2">
