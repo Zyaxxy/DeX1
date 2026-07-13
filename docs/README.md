@@ -10,3 +10,4 @@ Documentation for the Dexi protocol on Solana.
 | [current-scope.md](current-scope.md) | MVP scope — what's being built now |
 | [future-scope.md](future-scope.md) | "To be worked on" — planned enhancements |
 | [scoring.md](scoring.md) | Football scoring rules and formulas |
+| [txline-keeper-integration.md](txline-keeper-integration.md) | TxLINE & Keeper integration sequence and graph |
