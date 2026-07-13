@@ -1,18 +1,37 @@
 # Dexi — Decentralized Fantasy Sports on Solana
 
-Dexi is a decentralized fantasy sports protocol built on Solana using the Anchor framework. Users trade athlete tokens on constant-product AMMs, draft lineups, and win USDC prizes.
+**TxLINE Solana Colosseum Hackathon 2026 — Data-Driven Web3 Platforms Track**
+
+Dexi is a decentralized fantasy sports protocol built on Solana using the Anchor framework. Users trade athlete tokens on constant-product AMMs, draft 11-player lineups, and win USDC prizes — all verified and settled using live TxLINE World Cup data.
 
 **Devnet Program ID:** `HLqcxyy9DrVH7DJ2NqTza8Vq6GWB4aUuUSjFWdq5EAmt`
 
-**Devnet USDC Mint:** `9Y27Cm2eWZ1H6KzMss5Py4BhRPBMYKCssEoWBp2MunEP` (admin-controlled mint authority)
+**Devnet USDC Mint:** `9Y27Cm2eWZ1H6KzMss5Py4BhRPBMYKCssEoWBp2MunEP`
+
+---
+
+## How It Works
+
+1. **Trade athlete tokens** — Buy/sell tokens for real World Cup players via on-chain CPMM bonding curves
+2. **Draft your lineup** — Enter fantasy contests with 11-athlete lineups (role-based constraints: GK, DEF, MID, FWD)
+3. **TxLINE resolves scores** — The keeper bot fetches live match events (goals, assists, saves) from TxLINE's SSE stream to compute fantasy scores
+4. **Win USDC** — Prizes are distributed on-chain from the contest escrow vault
+
+## TxLINE Integration
+
+Dexi uses TxLINE as its primary data source for live match resolution:
+
+- **`/api/scores/snapshot/{fixtureId}?asOf={timestamp}`** — Fetches real-time match events for the 104 World Cup fixtures. The keeper bot polls this endpoint to detect goals, assists, saves, and match completion (`statusSoccerId === 'F'`) for automated contest settlement.
+- TxLINE's low-latency SSE stream powers live score display in the frontend, keeping fans engaged with real-time leaderboard updates as matches unfold.
 
 ## Features
 
 - **Athlete Token Markets** — Buy/sell athlete tokens via CPMM bonding curves
 - **Fantasy Contests** — Draft 11-athlete lineups with role-based constraints (GK, DEF, MID, FWD)
 - **Prize Pool Mechanics** — 90% of staked entry tokens swapped to USDC for prizes, 10% burned
-- **Keeper Automation** — Off-chain bot manages contest lifecycle (lock, process mints, settle)
+- **Keeper Automation** — Off-chain bot monitors TxLINE data and manages contest lifecycle (lock, process mints, settle)
 - **Address Lookup Tables** — V0 versioned transactions for compressed contest entry
+- **Devnet Deployed** — Fully functional on Solana devnet
 
 ## Architecture
 
@@ -21,10 +40,18 @@ Dexi is a decentralized fantasy sports protocol built on Solana using the Anchor
 │   Frontend   │     │  Keeper Bot  │     │  Solana Program │
 │  (Next.js)   │     │  (keepers/)  │     │  (programs/)    │
 │              │     │              │     │                 │
-│ Buy/Sell     │     │ Lock Contest │     │ 11 instructions │
-│ Enter Contest│────▶│ Process Mints│────▶│ CPMM + Contest  │
+│ Buy/Sell     │     │ TxLINE API   │     │ 11 instructions │
+│ Enter Contest│────▶│ Lock/Process │────▶│ CPMM + Contest  │
 │ Claim Reward │     │ Settle       │     │ Lifecycle       │
 └──────────────┘     └──────────────┘     └─────────────────┘
+                            │
+                     ┌──────┘
+                     ▼
+              ┌──────────────┐
+              │   TxLINE     │
+              │  Sports API  │
+              │ (Live scores)│
+              └──────────────┘
 ```
 
 | Component | Location | Tech |
@@ -70,20 +97,16 @@ Dexi is a decentralized fantasy sports protocol built on Solana using the Anchor
 - Anchor 1.0.2
 - pnpm (workspace monorepo)
 
+### Environment Variables
 
-## Tests
+Create a `.env` file in the `keepers/` directory:
 
-![Passing Tests](TestsPassing.png)
+```
+TXLINE_JWT=your_jwt_token
+TXLINE_API_TOKEN=your_api_token
+RPC_URL=https://api.devnet.solana.com
+```
 
-The integration test suite (`tests/dexi.ts`) covers:
-1. Initialize — admin config setup
-2. Create Pools — parameterized pool creation (GK, DEF, MID, FWD)
-3. Trading — buy, sell, disabled-pool guard, zero-amount guard
-4. Create Contest — happy path + invalid prize split
-5. Enter Contest — valid entry, invalid lineup, locked-contest guard
-6. Lock & Settle — lock, process entry mints, settle, not-locked guard
-7. Claim Reward — happy path + already-claimed guard
-8. Update Pool — rename, disable, enable
 
 ## Documentation
 
@@ -93,5 +116,6 @@ The integration test suite (`tests/dexi.ts`) covers:
 | [docs/current-scope.md](docs/current-scope.md) | MVP scope — instructions, contest flow, constraints |
 | [docs/future-scope.md](docs/future-scope.md) | Planned enhancements (merkle settlement, salary caps, LP program) |
 | [docs/scoring.md](docs/scoring.md) | Football scoring rules and formulas |
+
 
 
