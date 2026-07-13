@@ -5,6 +5,8 @@ import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import { useRevolvingTitle } from '@/hooks/useRevolvingTitle';
 import { usePageMeta } from '@/hooks/usePageMeta';
+import { useUserEntries } from '@/hooks/useUserEntries';
+import { useLiveScores } from '@/hooks/useLiveScores';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
@@ -89,6 +91,9 @@ export default function PortfolioPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  const { entries: userEntries, loading: entriesLoading, refetch: refetchEntries } = useUserEntries();
+  const { scores, loading: scoresLoading } = useLiveScores(userEntries);
 
   const fetchPortfolio = useCallback(async () => {
     if (!connected || !publicKey) {
@@ -272,6 +277,7 @@ export default function PortfolioPage() {
   const handleRefresh = () => {
     setRefreshing(true);
     fetchPortfolio();
+    refetchEntries();
   };
 
   const totalPortfolioValue = useMemo(() => {
@@ -368,7 +374,7 @@ export default function PortfolioPage() {
           <nav className="flex-1 flex flex-col px-2 space-y-1 overflow-y-auto">
             <SidebarNavItem href="/portfolio" icon={PieChart} active collapsed={sidebarCollapsed}>Overview</SidebarNavItem>
             <SidebarNavItem href="/portfolio?tab=tokens" icon={Coins} collapsed={sidebarCollapsed}>My Tokens</SidebarNavItem>
-            <SidebarNavItem href="/contests" icon={Trophy} collapsed={sidebarCollapsed}>My Contests</SidebarNavItem>
+            <SidebarNavItem href="/my-contests" icon={Trophy} collapsed={sidebarCollapsed}>My Contests</SidebarNavItem>
             <SidebarNavItem href="/portfolio?tab=history" icon={Receipt} collapsed={sidebarCollapsed}>History</SidebarNavItem>
           </nav>
 
@@ -501,11 +507,16 @@ export default function PortfolioPage() {
                 <div className="bg-[#181b25] border border-[#454932] p-6 flex flex-col">
                   <div className="flex justify-between items-center mb-6">
                     <h3 className="font-heading text-[18px] font-[600] text-white">Active Contests</h3>
-                    <Link href="/contests">
+                    <Link href="/my-contests">
                       <ExternalLink className="w-4 h-4 text-[#c6c9ab] hover:text-white transition-colors cursor-pointer" />
                     </Link>
                   </div>
-                  {entries.length === 0 ? (
+                  {entriesLoading ? (
+                    <div className="flex-1 flex flex-col items-center justify-center text-center">
+                      <Trophy className="w-8 h-8 text-[#c6c9ab] mb-3 animate-pulse" />
+                      <p className="text-sm text-[#c6c9ab]">Loading entries...</p>
+                    </div>
+                  ) : userEntries.length === 0 ? (
                     <div className="flex-1 flex flex-col items-center justify-center text-center">
                       <Trophy className="w-8 h-8 text-[#c6c9ab] mb-3" />
                       <p className="text-sm text-[#c6c9ab] mb-1">No active contests</p>
@@ -518,44 +529,52 @@ export default function PortfolioPage() {
                     </div>
                   ) : (
                     <div className="flex flex-col gap-3 overflow-y-auto pr-1">
-                      {entries.map((entry, i) => (
-                        <Link
-                          key={entry.contestId}
-                          href={`/contest/${entry.contestNumber}`}
-                        >
-                          <motion.div
-                            initial={{ opacity: 0, y: 8 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: i * 0.05 }}
-                            className="p-4 bg-[#181b25] border border-[#454932] rounded-lg hover:border-[#d2f000] transition-colors group cursor-pointer"
+                      {userEntries.slice(0, 5).map((entry, i) => {
+                        const scoreData = scores[entry.entryAddress];
+                        const statusLabel = entry.status === 0 ? 'Live' : entry.status === 1 ? 'Locked' : 'Settled';
+                        return (
+                          <Link
+                            key={entry.entryAddress}
+                            href={`/contest/${entry.contestNumber}`}
                           >
-                            <div className="flex justify-between items-start mb-3">
-                              <span className="font-mono text-[14px] font-[700] text-white group-hover:text-[#d2f000] transition-colors">
-                                {entry.contestName}
-                              </span>
-                              <span className={`font-mono text-[12px] px-2 py-0.5 rounded-full ${
-                                entry.status === 'Live'
-                                  ? 'text-[#4ade80] bg-[#4ade80]/10'
-                                  : entry.status === 'Starts soon'
-                                  ? 'text-amber-400 bg-amber-500/10'
-                                  : 'text-blue-400 bg-blue-500/10'
-                              }`}>
-                                {entry.status}
-                              </span>
-                            </div>
-                            <div className="flex justify-between items-end mt-2">
-                              <div>
-                                <span className="block font-mono text-[11px] text-[#c6c9ab] mb-1 tracking-[0.02em]">Position</span>
-                                <span className="font-mono text-[14px] font-[700] text-white">{entry.position}</span>
+                            <motion.div
+                              initial={{ opacity: 0, y: 8 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ delay: i * 0.05 }}
+                              className="p-4 bg-[#181b25] border border-[#454932] rounded-lg hover:border-[#d2f000] transition-colors group cursor-pointer"
+                            >
+                              <div className="flex justify-between items-start mb-3">
+                                <span className="font-mono text-[14px] font-[700] text-white group-hover:text-[#d2f000] transition-colors">
+                                  {entry.contestName}
+                                </span>
+                                <span className={`font-mono text-[12px] px-2 py-0.5 rounded-full ${
+                                  entry.status === 0
+                                    ? 'text-[#4ade80] bg-[#4ade80]/10'
+                                    : entry.status === 1
+                                    ? 'text-amber-400 bg-amber-500/10'
+                                    : 'text-blue-400 bg-blue-500/10'
+                                }`}>
+                                  {statusLabel}
+                                </span>
                               </div>
-                              <div className="text-right">
-                                <span className="block font-mono text-[11px] text-[#c6c9ab] mb-1 tracking-[0.02em]">Est. Payout</span>
-                                <span className="font-mono text-[14px] font-[700] text-[#4ade80]">{entry.estPayout?.toFixed(2)} USDC</span>
+                              <div className="flex justify-between items-end mt-2">
+                                <div>
+                                  <span className="block font-mono text-[11px] text-[#c6c9ab] mb-1 tracking-[0.02em]">Position</span>
+                                  <span className="font-mono text-[14px] font-[700] text-white">
+                                    {scoreData ? `#${scoreData.position} / ${scoreData.totalEntries}` : '-'}
+                                  </span>
+                                </div>
+                                <div className="text-right">
+                                  <span className="block font-mono text-[11px] text-[#c6c9ab] mb-1 tracking-[0.02em]">Est. Payout</span>
+                                  <span className="font-mono text-[14px] font-[700] text-[#4ade80]">
+                                    {scoreData?.prizeEstimate ? `$${scoreData.prizeEstimate.toFixed(2)}` : '-'}
+                                  </span>
+                                </div>
                               </div>
-                            </div>
-                          </motion.div>
-                        </Link>
-                      ))}
+                            </motion.div>
+                          </Link>
+                        );
+                      })}
                     </div>
                   )}
                 </div>

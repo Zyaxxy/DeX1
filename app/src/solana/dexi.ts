@@ -35,6 +35,16 @@ export function formatTimestamp(timestamp: number | bigint): string {
   });
 }
 
+export function formatEstimatedPrizePool(entryCount: bigint | number): string {
+  const ENTRY_FEE = 10;
+  const count = typeof entryCount === 'bigint' ? Number(entryCount) : entryCount;
+  const estimated = count * ENTRY_FEE;
+  return `~$${estimated.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
 export function formatTokenAmount(amount: bigint | number, decimals: number = 9): string {
   const num = typeof amount === 'bigint' ? Number(amount) : amount;
   return (num / Math.pow(10, decimals)).toLocaleString('en-US', {

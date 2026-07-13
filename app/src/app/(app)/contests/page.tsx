@@ -16,7 +16,7 @@ import Navbar from '@/components/layout/navbar';
 import Footer from '@/components/layout/footer';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { getRpc, PROGRAM_ID, CONTEST_STATUS_LABELS, formatUSDC, formatTimestamp } from '@/solana/client';
+import { getRpc, PROGRAM_ID, CONTEST_STATUS_LABELS, formatUSDC, formatEstimatedPrizePool, formatTimestamp } from '@/solana/client';
 import { decodeContest, ContestStatus } from '@dexi/sdk';
 
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
@@ -231,7 +231,7 @@ function ContestsPage() {
                       </div>
 
                       <div className="flex items-center gap-2 mb-4">
-                        <span className="font-heading text-[16px] font-[700] text-primary">${formatUSDC(contest.prizePool)} Prize Pool</span>
+                        <span className="font-heading text-[16px] font-[700] text-primary">{contest.prizePool > BigInt(0) ? `$${formatUSDC(contest.prizePool)}` : formatEstimatedPrizePool(contest.entryCount)} Prize Pool</span>
                       </div>
 
                       <div className="flex items-center gap-5 font-mono text-[13px] text-[#c6c9ab] mb-4">
@@ -316,7 +316,7 @@ function ContestsPage() {
                         </div>
                       </div>
                       <div className="text-right hidden md:block">
-                        <p className="font-mono text-[14px] font-[700] text-primary">${formatUSDC(contest.prizePool)}</p>
+                        <p className="font-mono text-[14px] font-[700] text-primary">{contest.prizePool > BigInt(0) ? `$${formatUSDC(contest.prizePool)}` : formatEstimatedPrizePool(contest.entryCount)}</p>
                       </div>
                       <div className="text-right hidden md:block">
                         <p className="font-mono text-[12px] font-[700] text-[#dfe2f0]">{contest.entryCount} entries</p>
@@ -333,7 +333,7 @@ function ContestsPage() {
                       {/* Mobile row */}
                       <div className="flex items-center justify-between md:hidden pt-2 border-t border-[#454932] mt-2">
                         <div className="flex items-center gap-3 font-mono text-[12px] text-[#c6c9ab]">
-                          <span className="font-[700]">${formatUSDC(contest.prizePool)}</span>
+                          <span className="font-[700]">{contest.prizePool > BigInt(0) ? `$${formatUSDC(contest.prizePool)}` : formatEstimatedPrizePool(contest.entryCount)}</span>
                           <span>{contest.entryCount} entries</span>
                         </div>
                         <span className="font-mono text-[13px] font-[700] text-[#dfe2f0]">{formatCountdown(contest.startTime)}</span>
@@ -381,7 +381,7 @@ function ContestsPage() {
                       </div>
                       </div>
                       <div className="flex items-center gap-4">
-                        <span className="font-mono text-[14px] font-[700] text-[#c6c9ab]">${formatUSDC(contest.prizePool)}</span>
+                          <span className="font-mono text-[14px] font-[700] text-[#c6c9ab]">{contest.prizePool > BigInt(0) ? `$${formatUSDC(contest.prizePool)}` : formatEstimatedPrizePool(contest.entryCount)}</span>
                         <span className="font-mono text-[11px] font-[700] text-[#c6c9ab] bg-[#181b25] border border-[#454932] px-2 py-0.5">
                           {CONTEST_STATUS_LABELS[contest.status]}
                         </span>

@@ -10,6 +10,8 @@ import { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID, createAssociatedTokenA
 import { findConfigPda, findEntryPda, findContestPda, getEnterContestInstructionDataEncoder } from '@dexi/sdk';
 import { useRevolvingTitle } from '@/hooks/useRevolvingTitle';
 import { usePageMeta } from '@/hooks/usePageMeta';
+import { useLiveScores } from '@/hooks/useLiveScores';
+import { useUserEntries } from '@/hooks/useUserEntries';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Trophy, Users, Search, X, Plus, ChevronRight, Wallet, Check,
@@ -22,7 +24,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 
-import { getConnection, getRpc, PROGRAM_ID, ROLE_LABELS, CONTEST_STATUS_LABELS, ROLE_COLORS, formatUSDC, formatTimestamp, ROLE_REQUIREMENTS, LINEUP_SIZE } from '@/solana/client';
+import { getConnection, getRpc, PROGRAM_ID, ROLE_LABELS, CONTEST_STATUS_LABELS, ROLE_COLORS, formatUSDC, formatEstimatedPrizePool, formatTimestamp, ROLE_REQUIREMENTS, LINEUP_SIZE } from '@/solana/client';
 import { toast } from 'sonner';
 import { decodeAthletePool, ATHLETE_POOL_DISCRIMINATOR, decodeContest, ContestStatus } from '@dexi/sdk';
 import { getBase58Decoder } from '@solana/kit';
@@ -96,6 +98,9 @@ function ContestDetailContent() {
   const [roleFilter, setRoleFilter] = useState('all');
   const [showConfirm, setShowConfirm] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
+
+  const { entries: userEntries } = useUserEntries();
+  const { scores, loading: scoresLoading } = useLiveScores(userEntries);
 
   const revolvingTitles = useMemo(() => [
     contest ? `${contest.name} | DEXI` : 'Contest | DEXI',
@@ -522,6 +527,9 @@ function ContestDetailContent() {
   }
 
   if (contest.status !== 0) {
+    const userEntryForContest = userEntries.find(e => e.contestId === contestId);
+    const userScore = userEntryForContest ? scores[userEntryForContest.entryAddress] : undefined;
+
     return (
       <div className="min-h-screen flex flex-col bg-[#0f131d]">
         <Navbar />
@@ -543,6 +551,30 @@ function ContestDetailContent() {
                     {CONTEST_STATUS_LABELS[contest.status]}
                   </span>
                 </div>
+                {userEntryForContest && (
+                  <div className="flex items-center gap-6 p-4 bg-[#181b25] border border-[#454932]">
+                    <div className="text-center">
+                      <p className="font-mono text-[11px] tracking-[0.02em] text-[#c6c9ab] mb-1 uppercase">Your Score</p>
+                      <p className="font-heading text-[32px] font-[700] text-primary">
+                        {scoresLoading ? '-' : userScore?.score ?? '-'}
+                      </p>
+                    </div>
+                    <div className="w-px h-12 bg-[#454932]" />
+                    <div className="text-center">
+                      <p className="font-mono text-[11px] tracking-[0.02em] text-[#c6c9ab] mb-1 uppercase">Position</p>
+                      <p className="font-heading text-[32px] font-[700] text-white">
+                        {scoresLoading ? '-' : userScore ? `#${userScore.position}` : '-'}
+                      </p>
+                    </div>
+                    <div className="w-px h-12 bg-[#454932]" />
+                    <div className="text-center">
+                      <p className="font-mono text-[11px] tracking-[0.02em] text-[#c6c9ab] mb-1 uppercase">Est. Prize</p>
+                      <p className="font-heading text-[32px] font-[700] text-positive">
+                        {scoresLoading ? '-' : userScore?.prizeEstimate ? `$${userScore.prizeEstimate.toFixed(2)}` : '-'}
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
             <div className="p-8">
@@ -553,7 +585,7 @@ function ContestDetailContent() {
                 </div>
                 <div className="p-5 bg-[#181b25] border border-[#454932] text-center">
                   <p className="font-mono text-[11px] tracking-[0.02em] font-[500] text-[#c6c9ab] mb-2 uppercase">Prize Pool</p>
-                  <p className="font-heading text-[28px] font-[700] text-primary">${formatUSDC(contest.prizePool)}</p>
+                  <p className="font-heading text-[28px] font-[700] text-primary">{contest.settled ? `$${formatUSDC(contest.prizePool)}` : formatEstimatedPrizePool(contest.entryCount)}</p>
                 </div>
                 <div className="p-5 bg-[#181b25] border border-[#454932] text-center">
                   <p className="font-mono text-[11px] tracking-[0.02em] font-[500] text-[#c6c9ab] mb-2 uppercase">Winners</p>
@@ -604,7 +636,7 @@ function ContestDetailContent() {
                 <div className="flex items-center gap-4 md:text-right">
                   <div>
                     <p className="font-mono text-[11px] tracking-[0.02em] font-[500] text-[#c6c9ab] mb-0.5 uppercase">Prize Pool</p>
-                    <p className="font-heading text-[24px] font-[700] text-primary">${formatUSDC(contest.prizePool)}</p>
+                    <p className="font-heading text-[24px] font-[700] text-primary">{contest.settled ? `$${formatUSDC(contest.prizePool)}` : formatEstimatedPrizePool(contest.entryCount)}</p>
                   </div>
                   <div className="w-px h-10 bg-[#454932]" />
                   <div>

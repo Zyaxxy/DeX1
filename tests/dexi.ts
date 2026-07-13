@@ -374,7 +374,7 @@ describe("Dexi", () => {
   describe("Create Pools", () => {
     for (const { name, role } of allPoolConfigs) {
       it(`should create ${role.toUpperCase()} pool (${name})`, async () => {
-        const mint = await createMint(connection, admin, admin.publicKey, null, 0);
+        const mint = await createMint(connection, admin, admin.publicKey, null, 5);
         const [pda] = PublicKey.findProgramAddressSync([POOL_SEED, mint.toBuffer()], program.programId);
 
         const tokenVault = getAssociatedTokenAddressSync(mint, pda, true);
@@ -404,7 +404,7 @@ describe("Dexi", () => {
         assert.strictEqual(pool.enabled, true);
 
         // Seed liquidity
-        await mintTo(connection, admin, mint, tokenVault, admin, 1_000_000);
+        await mintTo(connection, admin, mint, tokenVault, admin, 1_000_000 * 100_000);
         await mintTo(connection, admin, usdcMint, usdcVault, admin, 1000 * 1e6);
 
         // Store for later tests
@@ -422,7 +422,7 @@ describe("Dexi", () => {
     it("should buy tokens from all pools", async () => {
       for (const { mint, pda } of Object.values(pools)) {
         const userAta = (await getOrCreateAssociatedTokenAccount(connection, user1, mint, user1.publicKey)).address;
-        await mintTo(connection, admin, mint, userAta, admin, 1000);
+        await mintTo(connection, admin, mint, userAta, admin, 1000 * 100_000);
 
         await program.methods
           .buy(liquidityAmount)
