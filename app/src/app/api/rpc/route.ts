@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { fetchWithFailover, getRpcUrls } from '@/solana/multi-rpc';
 
 export const maxDuration = 60;
 
-// Simple in-memory cache for read-only RPC requests
 interface CacheEntry {
   responseBody: string;
   contentType: string;
@@ -11,9 +11,8 @@ interface CacheEntry {
 }
 
 const cache = new Map<string, CacheEntry>();
-const CACHE_TTL_MS = 2000; // Cache read-only queries for 2 seconds
+const CACHE_TTL_MS = 2000;
 
-// List of read-only RPC methods that are safe to cache
 const CACHABLE_METHODS = new Set([
   'getAccountInfo',
   'getProgramAccounts',
@@ -29,22 +28,15 @@ const CACHABLE_METHODS = new Set([
 ]);
 
 export async function POST(request: NextRequest) {
-  let rpcUrl = process.env.RPC_URL;
-  if (!rpcUrl || !rpcUrl.startsWith('http')) {
-    rpcUrl = 'https://api.devnet.solana.com';
-  }
-
   try {
     const body = await request.json();
     const method = body.method;
     const params = body.params;
 
-    // Determine if request is cacheable
     const isCacheable = CACHABLE_METHODS.has(method);
     let cacheKey = '';
 
     if (isCacheable) {
-      // Hash key based on method and params (ignore ID to share cache across different clients)
       cacheKey = `${method}:${JSON.stringify(params)}`;
       const cached = cache.get(cacheKey);
       if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
@@ -58,17 +50,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const response = await fetch(rpcUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-    });
+    const response = await fetchWithFailover(body);
 
     const text = await response.text();
 
-    // Cache the response if it was a successful read-only request
     if (isCacheable && response.status === 200) {
       cache.set(cacheKey, {
         responseBody: text,
@@ -78,7 +63,6 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Clean up expired cache entries periodically
     if (cache.size > 200) {
       const now = Date.now();
       for (const [key, val] of cache.entries()) {
@@ -108,7 +92,8 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error: any) {
-    console.error('Error proxying Solana RPC request:', error);
+    const rpcUrls = getRpcUrls();
+    console.error('Error proxying Solana RPC request:', error.message, 'Available RPCs:', rpcUrls.length);
     return NextResponse.json(
       { error: 'Internal Server Error', message: error.message },
       { status: 500 }

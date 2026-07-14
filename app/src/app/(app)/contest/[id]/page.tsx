@@ -10,13 +10,13 @@ import { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID, createAssociatedTokenA
 import { findConfigPda, findEntryPda, findContestPda, getEnterContestInstructionDataEncoder } from '@dexi/sdk';
 import { useRevolvingTitle } from '@/hooks/useRevolvingTitle';
 import { usePageMeta } from '@/hooks/usePageMeta';
-import { useLiveScores } from '@/hooks/useLiveScores';
 import { useUserEntries } from '@/hooks/useUserEntries';
 import { useContestLeaderboard } from '@/hooks/useContestLeaderboard';
+import { ScoringRules } from '@/components/contest/scoring-rules';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ClaimButton } from '@/components/contest/claim-button';
 import { Leaderboard } from '@/components/contest/leaderboard';
-import { ContestLeaderboard } from '@/components/contest/contest-leaderboard';
+
 import {
   Trophy, Users, Search, X, Plus, ChevronRight, Wallet, Check,
   Shield, Swords, Eye, Goal, Loader2, ExternalLink, ArrowLeft,
@@ -108,9 +108,6 @@ function ContestDetailContent() {
   const [currentPage, setCurrentPage] = useState(1);
   const ATHLETES_PER_PAGE = 5;
 
-  const { entries: userEntries, refetch: refetchEntries } = useUserEntries();
-  const { scores, loading: scoresLoading } = useLiveScores(userEntries);
-
   const contestPda = useMemo(() => {
     if (!contestId) return null;
     const idBytes = new Uint8Array(8);
@@ -118,6 +115,16 @@ function ContestDetailContent() {
     view.setBigUint64(0, BigInt(contestId), true);
     return PublicKey.findProgramAddressSync([Buffer.from('contest'), Buffer.from(idBytes)], PROGRAM_ID)[0];
   }, [contestId]);
+
+  const { entries: userEntries, refetch: refetchEntries } = useUserEntries();
+  const { leaderboard, loading: scoresLoading, matchStatus: contestMatchStatus } = useContestLeaderboard(
+    contestPda ? contestPda.toBase58() : '',
+    contest?.fixtureId || '',
+    contest ? Number(contest.prizePool) : 0,
+    contest?.winnerCount || 0,
+    publicKey?.toBase58()
+  );
+  const userEntryFromLeaderboard = leaderboard.find(e => e.isCurrentUser);
 
   const revolvingTitles = useMemo(() => [
     contest ? `${contest.name} | DEXI` : 'Contest | DEXI',
@@ -655,9 +662,16 @@ function ContestDetailContent() {
     );
   }
 
+  const poolMap = useMemo(() => {
+    const map = new Map<string, { name: string; role: number }>();
+    for (const a of availableAthletes) {
+      map.set(a.mint, { name: a.name, role: a.role });
+    }
+    return map;
+  }, [availableAthletes]);
+
   if (contest.status !== 0) {
     const userEntryForContest = userEntries.find(e => e.contestId === contestId);
-    const userScore = userEntryForContest ? scores[userEntryForContest.entryAddress] : undefined;
 
     return (
       <div className="min-h-screen flex flex-col bg-[#0f131d]">
@@ -685,21 +699,21 @@ function ContestDetailContent() {
                     <div className="text-center">
                       <p className="font-mono text-[11px] tracking-[0.02em] text-[#c6c9ab] mb-1 uppercase">Your Score</p>
                       <p className="font-heading text-[32px] font-[700] text-primary">
-                        {scoresLoading ? '-' : userScore?.score ?? '-'}
+                        {scoresLoading ? '-' : userEntryFromLeaderboard?.score ?? '-'}
                       </p>
                     </div>
                     <div className="w-px h-12 bg-[#454932]" />
                     <div className="text-center">
                       <p className="font-mono text-[11px] tracking-[0.02em] text-[#c6c9ab] mb-1 uppercase">Position</p>
                       <p className="font-heading text-[32px] font-[700] text-white">
-                        {scoresLoading ? '-' : userScore ? `#${userScore.position}` : '-'}
+                        {scoresLoading ? '-' : userEntryFromLeaderboard ? `#${userEntryFromLeaderboard.position}` : '-'}
                       </p>
                     </div>
                     <div className="w-px h-12 bg-[#454932]" />
                     <div className="text-center">
                       <p className="font-mono text-[11px] tracking-[0.02em] text-[#c6c9ab] mb-1 uppercase">Est. Prize</p>
                       <p className="font-heading text-[32px] font-[700] text-positive">
-                        {scoresLoading ? '-' : userScore?.prizeEstimate ? `$${userScore.prizeEstimate.toFixed(2)}` : '-'}
+                        {scoresLoading ? '-' : userEntryFromLeaderboard?.prizeEstimate ? `$${userEntryFromLeaderboard.prizeEstimate.toFixed(2)}` : '-'}
                       </p>
                     </div>
                     {contest.status === 2 && contestPda && (
@@ -709,7 +723,7 @@ function ContestDetailContent() {
                           <ClaimButton
                             contestAddress={contestPda.toBase58()}
                             entryAddress={userEntryForContest.entryAddress}
-                            amount={userScore?.prizeEstimate}
+                            amount={userEntryFromLeaderboard?.prizeEstimate}
                             onClaimed={() => refetchEntries()}
                           />
                         </div>
@@ -736,17 +750,18 @@ function ContestDetailContent() {
               </div>
             </div>
 
-            {userEntryForContest && contest.fixtureId && contestPda && (
-              <div className="p-8 pt-0">
-                <ContestLeaderboard
-                  contestAddress={contestPda.toBase58()}
-                  fixtureId={contest.fixtureId}
-                  prizePool={Number(contest.prizePool)}
-                  winnerCount={contest.winnerCount}
+            <div className="p-8 pt-0 space-y-6">
+              <ScoringRules />
+              {userEntryForContest && contest.fixtureId && contestPda && (
+                <Leaderboard
+                  entries={leaderboard}
+                  loading={scoresLoading}
+                  matchStatus={contestMatchStatus}
+                  poolMap={poolMap}
                   currentUserAddress={publicKey?.toBase58()}
                 />
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </main>
       </div>

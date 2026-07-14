@@ -6,7 +6,8 @@ import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import { useRevolvingTitle } from '@/hooks/useRevolvingTitle';
 import { usePageMeta } from '@/hooks/usePageMeta';
 import { useUserEntries, EnrichedEntry } from '@/hooks/useUserEntries';
-import { useLiveScores } from '@/hooks/useLiveScores';
+import { useGlobalScores } from '@/hooks/useGlobalScores';
+import { ScoringRules } from '@/components/contest/scoring-rules';
 import { ClaimButton } from '@/components/contest/claim-button';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
@@ -220,7 +221,7 @@ function MyContestsPage() {
   const { connected, publicKey } = useWallet();
   const { setVisible } = useWalletModal();
   const { entries, loading, error, refetch } = useUserEntries();
-  const { scores, loading: scoresLoading } = useLiveScores(entries);
+  const { scores, loading: scoresLoading } = useGlobalScores(entries, publicKey?.toBase58());
 
   useRevolvingTitle([
     'My Contests | DEXI',
@@ -308,6 +309,10 @@ function MyContestsPage() {
               <RefreshCw className="w-4 h-4 mr-2" />
               Refresh
             </Button>
+          </div>
+
+          <div className="mb-6 max-w-md">
+            <ScoringRules compact />
           </div>
 
           {error && (
