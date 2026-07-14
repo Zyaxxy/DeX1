@@ -277,6 +277,14 @@ function ContestDetailContent() {
     return errors;
   }, [roleCounts, selectedAthletes]);
 
+  const poolMap = useMemo(() => {
+    const map = new Map<string, { name: string; role: number }>();
+    for (const a of availableAthletes) {
+      map.set(a.mint, { name: a.name, role: a.role });
+    }
+    return map;
+  }, [availableAthletes]);
+
   const handleSelectAthlete = useCallback((athlete: Athlete) => {
     if (selectedAthletes.length >= LINEUP_SIZE) {
       toast.error('Lineup is full');
@@ -661,14 +669,6 @@ function ContestDetailContent() {
       </div>
     );
   }
-
-  const poolMap = useMemo(() => {
-    const map = new Map<string, { name: string; role: number }>();
-    for (const a of availableAthletes) {
-      map.set(a.mint, { name: a.name, role: a.role });
-    }
-    return map;
-  }, [availableAthletes]);
 
   if (contest.status !== 0) {
     const userEntryForContest = userEntries.find(e => e.contestId === contestId);
