@@ -7,6 +7,7 @@ import { useRevolvingTitle } from '@/hooks/useRevolvingTitle';
 import { usePageMeta } from '@/hooks/usePageMeta';
 import { useUserEntries } from '@/hooks/useUserEntries';
 import { useLiveScores } from '@/hooks/useLiveScores';
+import { ClaimButton } from '@/components/contest/claim-button';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
@@ -564,6 +565,27 @@ export default function PortfolioPage() {
                                   </span>
                                 </div>
                               </div>
+
+                              {entry.status === 2 && (
+                                <div className="mt-3 pt-3 border-t border-[#454932]/50" onClick={(e) => e.stopPropagation()}>
+                                  {entry.claimed ? (
+                                    <div className="flex items-center justify-center py-1.5 bg-positive/10 border border-positive/30">
+                                      <span className="font-mono text-[11px] font-[700] text-positive">✓ Claimed</span>
+                                    </div>
+                                  ) : scoreData?.prizeEstimate && scoreData.prizeEstimate > 0 ? (
+                                    <ClaimButton
+                                      contestAddress={entry.contestAddress}
+                                      entryAddress={entry.entryAddress}
+                                      amount={scoreData.prizeEstimate}
+                                      variant="compact"
+                                    />
+                                  ) : (
+                                    <div className="text-center py-1.5 text-[#c6c9ab] font-mono text-[10px]">
+                                      No prize
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                             </motion.div>
                           </Link>
                         );

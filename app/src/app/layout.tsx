@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, Archivo_Narrow, JetBrains_Mono } from "next/font/google";
 import { Toaster } from "sonner";
+import { Analytics } from "@vercel/analytics/react";
 import "./globals.css";
 
 const inter = Inter({
@@ -79,6 +80,7 @@ export default function RootLayout({
     <html lang="en" className={`${inter.variable} ${archivoNarrow.variable} ${jetbrainsMono.variable} dark antialiased`}>
       <body className="min-h-screen bg-background text-foreground flex flex-col font-sans">
         {children}
+        <Analytics />
         <Toaster position="bottom-right" theme="dark" />
       </body>
     </html>

@@ -12,7 +12,11 @@ import { useRevolvingTitle } from '@/hooks/useRevolvingTitle';
 import { usePageMeta } from '@/hooks/usePageMeta';
 import { useLiveScores } from '@/hooks/useLiveScores';
 import { useUserEntries } from '@/hooks/useUserEntries';
+import { useContestLeaderboard } from '@/hooks/useContestLeaderboard';
 import { motion, AnimatePresence } from 'framer-motion';
+import { ClaimButton } from '@/components/contest/claim-button';
+import { Leaderboard } from '@/components/contest/leaderboard';
+import { ContestLeaderboard } from '@/components/contest/contest-leaderboard';
 import {
   Trophy, Users, Search, X, Plus, ChevronRight, Wallet, Check,
   Shield, Swords, Eye, Goal, Loader2, ExternalLink, ArrowLeft,
@@ -104,8 +108,16 @@ function ContestDetailContent() {
   const [currentPage, setCurrentPage] = useState(1);
   const ATHLETES_PER_PAGE = 5;
 
-  const { entries: userEntries } = useUserEntries();
+  const { entries: userEntries, refetch: refetchEntries } = useUserEntries();
   const { scores, loading: scoresLoading } = useLiveScores(userEntries);
+
+  const contestPda = useMemo(() => {
+    if (!contestId) return null;
+    const idBytes = new Uint8Array(8);
+    const view = new DataView(idBytes.buffer);
+    view.setBigUint64(0, BigInt(contestId), true);
+    return PublicKey.findProgramAddressSync([Buffer.from('contest'), Buffer.from(idBytes)], PROGRAM_ID)[0];
+  }, [contestId]);
 
   const revolvingTitles = useMemo(() => [
     contest ? `${contest.name} | DEXI` : 'Contest | DEXI',
@@ -690,6 +702,19 @@ function ContestDetailContent() {
                         {scoresLoading ? '-' : userScore?.prizeEstimate ? `$${userScore.prizeEstimate.toFixed(2)}` : '-'}
                       </p>
                     </div>
+                    {contest.status === 2 && contestPda && (
+                      <>
+                        <div className="w-px h-12 bg-[#454932]" />
+                        <div className="flex items-center">
+                          <ClaimButton
+                            contestAddress={contestPda.toBase58()}
+                            entryAddress={userEntryForContest.entryAddress}
+                            amount={userScore?.prizeEstimate}
+                            onClaimed={() => refetchEntries()}
+                          />
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -710,6 +735,18 @@ function ContestDetailContent() {
                 </div>
               </div>
             </div>
+
+            {userEntryForContest && contest.fixtureId && contestPda && (
+              <div className="p-8 pt-0">
+                <ContestLeaderboard
+                  contestAddress={contestPda.toBase58()}
+                  fixtureId={contest.fixtureId}
+                  prizePool={Number(contest.prizePool)}
+                  winnerCount={contest.winnerCount}
+                  currentUserAddress={publicKey?.toBase58()}
+                />
+              </div>
+            )}
           </div>
         </main>
       </div>

@@ -7,6 +7,7 @@ import { useRevolvingTitle } from '@/hooks/useRevolvingTitle';
 import { usePageMeta } from '@/hooks/usePageMeta';
 import { useUserEntries, EnrichedEntry } from '@/hooks/useUserEntries';
 import { useLiveScores } from '@/hooks/useLiveScores';
+import { ClaimButton } from '@/components/contest/claim-button';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import {
@@ -154,6 +155,27 @@ function EntryCard({
             </div>
           </div>
         </div>
+
+        {entry.status === 2 && (
+          <div className="mt-4 pt-4 border-t border-[#454932]" onClick={(e) => e.stopPropagation()}>
+            {entry.claimed ? (
+              <div className="flex items-center justify-center py-2 bg-positive/10 border border-positive/30">
+                <span className="font-mono text-[12px] font-[700] text-positive">✓ Claimed</span>
+              </div>
+            ) : prizeEstimate > 0 ? (
+              <ClaimButton
+                contestAddress={entry.contestAddress}
+                entryAddress={entry.entryAddress}
+                amount={prizeEstimate}
+                variant="compact"
+              />
+            ) : (
+              <div className="text-center py-2 text-[#c6c9ab] font-mono text-[11px]">
+                No prize to claim
+              </div>
+            )}
+          </div>
+        )}
 
         {entry.athletes.length > 0 && (
           <div className="mt-4 pt-4 border-t border-[#454932]">
