@@ -163,7 +163,7 @@ export function Leaderboard({
                   <td className="px-4 py-3 text-right">
                     {entry.prizeEstimate > 0 ? (
                       <span className="font-mono text-[14px] font-[700] text-positive">
-                        ${entry.prizeEstimate.toFixed(2)}
+                        ${(entry.prizeEstimate / 1_000_000).toFixed(2)}
                       </span>
                     ) : (
                       <span className="font-mono text-[12px] text-[#c6c9ab]">-</span>

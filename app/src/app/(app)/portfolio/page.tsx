@@ -44,7 +44,7 @@ import {
   USDC_DECIMALS,
 } from '@/solana/client';
 import { decodeAthletePool, ATHLETE_POOL_DISCRIMINATOR, findConfigPda, decodeAdminConfig, findEntryPda, decodeUserEntry, decodeContest } from '@dexi/sdk';
-import bs58 from 'bs58';
+import { getBase58Decoder } from '@solana/kit';
 import { PublicKey } from '@solana/web3.js';
 import { getAssociatedTokenAddressSync, AccountLayout } from '@solana/spl-token';
 
@@ -129,7 +129,7 @@ export default function PortfolioPage() {
       const response = await getRpc().getProgramAccounts(PROGRAM_ID.toBase58() as any, {
         encoding: 'base64',
         filters: [
-          { memcmp: { offset: 0, encoding: 'base58', bytes: bs58.encode(Buffer.from(ATHLETE_POOL_DISCRIMINATOR)) } },
+          { memcmp: { offset: BigInt(0), encoding: 'base58', bytes: getBase58Decoder().decode(ATHLETE_POOL_DISCRIMINATOR) as any } },
         ],
       }).send();
 
@@ -218,7 +218,7 @@ export default function PortfolioPage() {
       const contestAccounts = await getRpc().getProgramAccounts(PROGRAM_ID.toBase58() as any, {
         encoding: 'base64',
         filters: [
-          { memcmp: { offset: 0, encoding: 'base58', bytes: bs58.encode(Buffer.from([216, 26, 88, 18, 251, 80, 201, 96])) } },
+          { memcmp: { offset: BigInt(0), encoding: 'base58', bytes: getBase58Decoder().decode(new Uint8Array([216, 26, 88, 18, 251, 80, 201, 96])) as any } },
         ],
       }).send();
 
@@ -561,7 +561,7 @@ export default function PortfolioPage() {
                                 <div className="text-right">
                                   <span className="block font-mono text-[11px] text-[#c6c9ab] mb-1 tracking-[0.02em]">Est. Payout</span>
                                   <span className="font-mono text-[14px] font-[700] text-[#4ade80]">
-                                    {scoreData?.prizeEstimate ? `$${scoreData.prizeEstimate.toFixed(2)}` : '-'}
+                                    {scoreData?.prizeEstimate ? `$${(scoreData.prizeEstimate / 1_000_000).toFixed(2)}` : '-'}
                                   </span>
                                 </div>
                               </div>
@@ -576,7 +576,7 @@ export default function PortfolioPage() {
                                     <ClaimButton
                                       contestAddress={entry.contestAddress}
                                       entryAddress={entry.entryAddress}
-                                      amount={scoreData.prizeEstimate}
+                                      amount={scoreData.prizeEstimate / 1_000_000}
                                       variant="compact"
                                     />
                                   ) : (

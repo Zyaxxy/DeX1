@@ -713,7 +713,7 @@ function ContestDetailContent() {
                     <div className="text-center">
                       <p className="font-mono text-[11px] tracking-[0.02em] text-[#c6c9ab] mb-1 uppercase">Est. Prize</p>
                       <p className="font-heading text-[32px] font-[700] text-positive">
-                        {scoresLoading ? '-' : userEntryFromLeaderboard?.prizeEstimate ? `$${userEntryFromLeaderboard.prizeEstimate.toFixed(2)}` : '-'}
+                        {scoresLoading ? '-' : userEntryFromLeaderboard?.prizeEstimate ? `$${(userEntryFromLeaderboard.prizeEstimate / 1_000_000).toFixed(2)}` : '-'}
                       </p>
                     </div>
                     {contest.status === 2 && contestPda && (
@@ -723,7 +723,7 @@ function ContestDetailContent() {
                           <ClaimButton
                             contestAddress={contestPda.toBase58()}
                             entryAddress={userEntryForContest.entryAddress}
-                            amount={userEntryFromLeaderboard?.prizeEstimate}
+                            amount={userEntryFromLeaderboard?.prizeEstimate ? userEntryFromLeaderboard.prizeEstimate / 1_000_000 : undefined}
                             onClaimed={() => refetchEntries()}
                           />
                         </div>

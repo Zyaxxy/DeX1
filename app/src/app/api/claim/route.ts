@@ -3,231 +3,26 @@ import {
   Connection,
   PublicKey,
   Keypair,
-  Transaction,
   TransactionInstruction,
+  TransactionMessage,
+  VersionedTransaction,
 } from '@solana/web3.js';
-import { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID } from '@solana/spl-token';
+import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 import bs58 from 'bs58';
 import {
   findConfigPda,
-  findContestPda,
   findEntryPda,
   decodeContest,
   decodeUserEntry,
   decodeAdminConfig,
   ContestStatus,
-  CONTEST_DISCRIMINATOR,
-  USER_ENTRY_DISCRIMINATOR,
   getClaimRewardInstruction,
-  CLAIM_REWARD_DISCRIMINATOR,
 } from '@dexi/sdk';
-import { getRpcUrls } from '@/solana/multi-rpc';
+import { readLeaderboard } from '@/data/leaderboard';
 
 export const maxDuration = 60;
 
-const PROGRAM_ID = new PublicKey('HLqcxyy9DrVH7DJ2nqTza8Vq6GWB4aUuUSjFWdq5EAmt');
-const USDC_MINT = new PublicKey('9Y27Cm2eWZ1H6KzMss5Py4BhRPBMYKCssEoWBp2MunEP');
-
-interface RankedEntry {
-  entryAddress: string;
-  userAddress: string;
-  score: number;
-  position: number;
-  prizeEstimate: number;
-}
-
-async function fetchLeaderboardScores(
-  connection: Connection,
-  contestAddress: string,
-  fixtureId: string,
-  prizePool: number,
-  winnerCount: number
-): Promise<Map<string, { score: number; position: number; prizeEstimate: number }>> {
-  const result = new Map<string, { score: number; position: number; prizeEstimate: number }>();
-
-  try {
-    const accounts = await connection.getProgramAccounts(PROGRAM_ID, {
-      filters: [
-        {
-          memcmp: {
-            offset: 0,
-            bytes: bs58.encode(Buffer.from(USER_ENTRY_DISCRIMINATOR)),
-          },
-        },
-      ],
-    });
-
-    const POINTS = {
-      goal: { 0: 40, 1: 30, 2: 20, 3: 10 },
-      assist: 5,
-      save: 5,
-      cleanSheet: 10,
-    };
-
-    function getGoalPoints(role: number): number {
-      return POINTS.goal[role as keyof typeof POINTS.goal] || 10;
-    }
-
-    const entriesWithScores: { entryAddress: string; userAddress: string; score: number }[] = [];
-
-    for (const { pubkey, account } of accounts) {
-      try {
-        const decodedEntry = decodeUserEntry({ address: pubkey.toBase58(), data: account.data, exists: true } as any).data;
-        
-        if (decodedEntry.contest.toString() !== contestAddress) continue;
-        if (!decodedEntry.isComplete) continue;
-
-        const contestInfo = await connection.getAccountInfo(new PublicKey(contestAddress), 'confirmed');
-        if (!contestInfo) continue;
-
-        const decodedContest = decodeContest({ address: contestAddress, data: contestInfo.data, exists: true } as any).data;
-        const contestFixtureId = String(decodedContest.fixtureId || '') || String(decodedContest.id);
-
-        if (contestFixtureId !== fixtureId) continue;
-
-        if (fixtureId) {
-          try {
-            const txlineBaseUrl = process.env.TXLINE_BASE_URL || 'https://txline-dev.txodds.com';
-            const txlineJwt = process.env.TXLINE_JWT;
-            const txlineApiToken = process.env.TXLINE_API_TOKEN;
-
-            if (txlineJwt && txlineApiToken) {
-              const response = await fetch(`${txlineBaseUrl}/api/scores/snapshot/${fixtureId}?asOf=${Date.now()}`, {
-                headers: {
-                  'Authorization': `Bearer ${txlineJwt}`,
-                  'X-Api-Token': txlineApiToken,
-                  'Content-Type': 'application/json',
-                },
-              });
-
-              if (response.ok) {
-                const data = await response.json();
-                const rawEvents = Array.isArray(data) ? data : (data.events || []);
-
-                const poolAccounts = await connection.getProgramAccounts(PROGRAM_ID, {
-                  filters: [
-                    {
-                      memcmp: {
-                        offset: 0,
-                        bytes: bs58.encode(Buffer.from([103, 246, 83, 235, 212, 232, 37, 50])),
-                      },
-                    },
-                  ],
-                });
-
-                const poolMap = new Map<string, { name: string; role: number }>();
-                for (const poolAcc of poolAccounts) {
-                  try {
-                    const decodedPool = decodeUserEntry({ address: poolAcc.pubkey.toBase58(), data: poolAcc.account.data, exists: true } as any).data;
-                  } catch {
-                    // Skip
-                  }
-                }
-
-                const athletePools = await connection.getProgramAccounts(PROGRAM_ID, {
-                  filters: [
-                    { memcmp: { offset: 0, bytes: bs58.encode(Buffer.from([103, 246, 83, 235, 212, 232, 37, 50])) } },
-                  ],
-                });
-
-                const mintToRole = new Map<string, number>();
-                for (const poolAcc of athletePools) {
-                  try {
-                    const poolData = poolAcc.account.data;
-                    const mint = new PublicKey(poolData.slice(0, 32)).toBase58();
-                    const role = poolData[32];
-                    mintToRole.set(mint, role);
-                  } catch {
-                    // Skip
-                  }
-                }
-
-                const playerEvents = new Map<string, string[]>();
-                for (const event of rawEvents) {
-                  const action = String(event.action || '');
-                  const playerId = String(event.playerId);
-                  if (!playerId || !action) continue;
-                  if (!playerEvents.has(playerId)) {
-                    playerEvents.set(playerId, []);
-                  }
-                  playerEvents.get(playerId)!.push(action.toLowerCase());
-                }
-
-                const participant1Score = data.score?.Participant1?.Score || 0;
-                const participant2Score = data.score?.Participant2?.Score || 0;
-
-                let totalScore = 0;
-                for (const athleteMint of decodedEntry.athletes) {
-                  const mintStr = athleteMint.toString();
-                  const role = mintToRole.get(mintStr) || 0;
-                  const playerId = mintStr;
-
-                  const events = playerEvents.get(playerId) || [];
-                  let athleteScore = 0;
-
-                  for (const action of events) {
-                    if (action.includes('goal')) {
-                      athleteScore += getGoalPoints(role);
-                    }
-                    if (action.includes('assist')) {
-                      athleteScore += POINTS.assist;
-                    }
-                    if (action.includes('save')) {
-                      if (role === 0) athleteScore += POINTS.save;
-                    }
-                  }
-
-                  const opponentScore = role === 0 ? participant2Score : participant1Score;
-                  if (opponentScore === 0 && (role === 0 || role === 1)) {
-                    athleteScore += POINTS.cleanSheet;
-                  }
-
-                  totalScore += athleteScore;
-                }
-
-                entriesWithScores.push({
-                  entryAddress: pubkey.toBase58(),
-                  userAddress: decodedEntry.user.toString(),
-                  score: totalScore,
-                });
-              }
-            }
-          } catch (e) {
-            console.error('Error fetching TxLINE scores:', e);
-          }
-        }
-      } catch {
-        // Skip bad entries
-      }
-    }
-
-    entriesWithScores.sort((a, b) => b.score - a.score);
-
-    const prizeSplit = winnerCount === 1
-      ? [10000]
-      : winnerCount === 2
-      ? [6000, 4000]
-      : winnerCount === 3
-      ? [5000, 3000, 2000]
-      : [5000, 3000, 1500, 500];
-
-    for (let i = 0; i < entriesWithScores.length; i++) {
-      const { entryAddress, userAddress, score } = entriesWithScores[i];
-      const position = i + 1;
-      let prizeEstimate = 0;
-
-      if (position <= winnerCount && prizeSplit[position - 1] !== undefined) {
-        prizeEstimate = (prizePool * prizeSplit[position - 1]) / 10000;
-      }
-
-      result.set(entryAddress, { score, position, prizeEstimate });
-    }
-  } catch (e) {
-    console.error('Error computing leaderboard:', e);
-  }
-
-  return result;
-}
+const PROGRAM_ID = new PublicKey('HLqcxyy9DrVH7DJ2NqTza8Vq6GWB4aUuUSjFWdq5EAmt');
 
 async function calculatePrizeAmount(
   connection: Connection,
@@ -247,17 +42,19 @@ async function calculatePrizeAmount(
       return { amount: 0, error: 'Contest is not settled yet' };
     }
 
-    const prizePool = Number(decodedContest.prizePool);
-    const winnerCount = decodedContest.winnerCount;
-    const fixtureId = String(decodedContest.fixtureId || '') || String(decodedContest.id);
+    console.log(`📊 calculatePrizeAmount: contest=${contestAddress}, entry=${entryAddress}`);
 
-    const leaderboard = await fetchLeaderboardScores(connection, contestAddress, fixtureId, prizePool, winnerCount);
-    const entryData = leaderboard.get(entryAddress);
+    const leaderboardData = await readLeaderboard(contestAddress);
+    if (!leaderboardData) {
+      return { amount: 0, error: 'Leaderboard data not available yet. Please try again after the keeper processes this contest.' };
+    }
 
+    const entryData = leaderboardData.entries.find(e => e.entryAddress === entryAddress);
     if (!entryData) {
       return { amount: 0, error: 'Entry not found in leaderboard' };
     }
 
+    console.log(`✅ Entry ${entryAddress}: score=${entryData.score}, pos=${entryData.position}, prize=${entryData.prizeEstimate}`);
     return { amount: entryData.prizeEstimate };
   } catch (e) {
     console.error('Error calculating prize amount:', e);
@@ -279,7 +76,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing contestAddress or userAddress' }, { status: 400 });
     }
 
-    const rpcUrl = getRpcUrls()[0] || process.env.RPC_URL || 'https://api.devnet.solana.com';
+    const rpcUrl = process.env.RPC_URL || 'https://api.devnet.solana.com';
     const keeperPrivateKey = process.env.KEEPER_PRIVATE_KEY;
 
     if (!keeperPrivateKey) {
@@ -367,27 +164,35 @@ export async function POST(request: NextRequest) {
     }
 
     const amount = typeof prizeAmountResult.amount === 'number' && isFinite(prizeAmountResult.amount) ? prizeAmountResult.amount : 0;
-    log(`💵 Calculated prize amount: ${amount} USDC`);
+    log(`💵 Calculated prize amount: ${amount} uUSDC (${(amount / 1_000_000).toFixed(6)} USDC)`);
 
     if (amount <= 0) {
       return NextResponse.json({ error: 'No prize to claim (position outside prize pool)' }, { status: 400 });
     }
 
-    const amountMicros = Math.floor(amount * 1_000_000);
-    if (!isFinite(amountMicros) || amountMicros < 1) {
+    if (!isFinite(amount) || amount < 1) {
       return NextResponse.json({ error: `Invalid prize amount: ${amount}` }, { status: 400 });
     }
+    const amountMicros = Math.floor(amount);
 
     let claimInstruction: any;
     try {
+      const userSigner = {
+        address: userPubkey.toBase58(),
+        signTransactions: async () => { throw new Error('User should sign on client'); },
+      };
+      const keeperSigner = {
+        address: keeperKeypair.publicKey.toBase58(),
+        signTransactions: async () => { throw new Error('Keeper should sign in submit route'); },
+      };
       claimInstruction = getClaimRewardInstruction({
         config: configPda.toBase58() as any,
         contest: contestAddress as any,
         entry: entryPda.toBase58() as any,
         escrowVault: escrowVault.toBase58() as any,
         userUsdcAta: userUsdcAta.toBase58() as any,
-        user: userPubkey.toBase58() as any,
-        keeper: keeperKeypair.publicKey.toBase58() as any,
+        user: userSigner as any,
+        keeper: keeperSigner as any,
         amount: amountMicros,
       });
     } catch (innerErr: any) {
@@ -401,10 +206,11 @@ export async function POST(request: NextRequest) {
         if (!acc.address) {
           throw new Error(`Account ${idx} has no address`);
         }
+        const role: number = acc.role ?? 0;
         return {
           pubkey: new PublicKey(acc.address),
-          isSigner: (acc as any).isSigner ?? false,
-          isWritable: (acc as any).isWritable ?? false,
+          isSigner: (role & 0b10) !== 0,
+          isWritable: (role & 0b01) !== 0,
         };
       });
       instruction = new TransactionInstruction({
@@ -418,23 +224,32 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `Failed to build transaction: ${innerErr.message}` }, { status: 500 });
     }
 
-    const tx = new Transaction();
-    tx.add(instruction);
-    tx.feePayer = keeperKeypair.publicKey;
-
     const bh = await connection.getLatestBlockhash('confirmed');
-    tx.recentBlockhash = bh.blockhash;
 
-    tx.partialSign(keeperKeypair);
+    const message = new TransactionMessage({
+      payerKey: userPubkey,
+      recentBlockhash: bh.blockhash,
+      instructions: [instruction],
+    }).compileToV0Message();
 
-    const serializedTx = tx.serialize({ requireAllSignatures: false }).toString('base64');
+    // Debug: log all account keys with their signer status
+    console.log('📋 V0 message accounts:');
+    for (let i = 0; i < message.staticAccountKeys.length; i++) {
+      const isSigner = i < message.header.numRequiredSignatures;
+      console.log(`   [${i}] ${message.staticAccountKeys[i].toBase58()} ${isSigner ? '(signer)' : '(non-signer)'}`);
+    }
+    console.log(`   numRequiredSignatures=${message.header.numRequiredSignatures}`);
 
-    log(`✅ Transaction prepared and signed by keeper`);
+    const tx = new VersionedTransaction(message);
+
+    const serializedTx = Buffer.from(tx.serialize()).toString('base64');
+
+    log(`✅ Transaction prepared (unsigned, fee payer = user)`);
     log(`📤 Returning transaction to frontend`);
 
     return NextResponse.json({
       transaction: serializedTx,
-      amount: amount,
+      amount: amount / 1_000_000,
       logs,
     });
   } catch (error: any) {

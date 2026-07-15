@@ -142,7 +142,7 @@ function EntryCard({
             <div className="flex items-center gap-2">
               <DollarSign className="w-4 h-4 text-primary" />
               <span className="font-heading text-[20px] font-[700] text-positive">
-                {loading ? '-' : prizeEstimate > 0 ? `$${prizeEstimate.toFixed(2)}` : '-'}
+                {loading ? '-' : prizeEstimate > 0 ? `$${(prizeEstimate / 1_000_000).toFixed(2)}` : '-'}
               </span>
             </div>
           </div>
@@ -167,7 +167,7 @@ function EntryCard({
               <ClaimButton
                 contestAddress={entry.contestAddress}
                 entryAddress={entry.entryAddress}
-                amount={prizeEstimate}
+                amount={prizeEstimate / 1_000_000}
                 variant="compact"
               />
             ) : (

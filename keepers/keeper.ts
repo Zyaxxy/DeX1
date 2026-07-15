@@ -232,6 +232,37 @@ class DexiKeeper {
     scoredEntries.sort((a, b) => b.score - a.score);
     console.log('Top 3 Entries:', scoredEntries.slice(0, 3).map(e => `${e.pubkey.toBase58()}: ${e.score} pts`));
 
+    // Step 4.5: Save leaderboard to off-chain storage
+    try {
+      const prizeSplits: Record<number, number[]> = { 1: [10000], 2: [6000, 4000], 3: [5000, 3000, 2000], 4: [5000, 3000, 1500, 500] };
+      const split = prizeSplits[contest.winnerCount] || prizeSplits[3];
+      const entries: { entryAddress: string; userAddress: string; score: number; position: number; prizeEstimate: number }[] = [];
+      for (let i = 0; i < scoredEntries.length; i++) {
+        const entry = scoredEntries[i];
+        let userAddress = '';
+        try {
+          const entryData = await this.fetchUserEntry(entry.pubkey);
+          userAddress = entryData.user.toString();
+        } catch {}
+        const position = i + 1;
+        let prizeEstimate = 0;
+        if (position <= contest.winnerCount && split[position - 1] !== undefined) {
+          prizeEstimate = (contest.prizePool * split[position - 1]) / 10000;
+        }
+        entries.push({ entryAddress: entry.pubkey.toBase58(), userAddress, score: entry.score, position, prizeEstimate });
+      }
+      const { saveLeaderboard } = await import('../app/src/data/leaderboard.js');
+      await saveLeaderboard({
+        contestAddress: contest.pubkey.toBase58(),
+        fixtureId: contest.fixtureId || String(contest.id),
+        updatedAt: Date.now(),
+        entries,
+      });
+      console.log(`   💾 Leaderboard saved for contest #${contest.id}`);
+    } catch (e: any) {
+      console.error(`   ⚠️ Failed to save leaderboard for contest #${contest.id}:`, e.message);
+    }
+
     const isMatchFinished = await this.checkIfMatchFinished(contest.fixtureId || String(contest.id));
     if (!isMatchFinished) {
       console.log('   ⏳ Match is still ongoing, postponing settlement...');

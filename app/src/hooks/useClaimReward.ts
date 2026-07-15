@@ -2,8 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
-import { Connection, Transaction } from '@solana/web3.js';
-import { getConnection } from '@/solana/client';
+import { VersionedTransaction } from '@solana/web3.js';
 import { toast } from 'sonner';
 
 export type ClaimState = 'idle' | 'preparing' | 'signing' | 'submitting' | 'success' | 'error';
@@ -73,19 +72,30 @@ export function useClaimReward(): UseClaimRewardResult {
 
       setState('signing');
 
-      const tx = Transaction.from(Buffer.from(serializedTx, 'base64'));
+      const tx = VersionedTransaction.deserialize(Buffer.from(serializedTx, 'base64'));
 
       const signedTx = await signTransaction(tx);
       console.log('✍️ Transaction signed by wallet');
 
       setState('submitting');
 
-      const connection = getConnection();
-      const signature = await connection.sendRawTransaction(signedTx.serialize());
-      console.log('📤 Transaction submitted:', signature);
+      const signedTxBase64 = Buffer.from(signedTx.serialize()).toString('base64');
+      const submitResponse = await fetch('/api/claim/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contestAddress,
+          transaction: signedTxBase64,
+        }),
+      });
 
-      await connection.confirmTransaction(signature, 'confirmed');
-      console.log('✅ Transaction confirmed');
+      const submitData = await submitResponse.json();
+      if (!submitResponse.ok) {
+        throw new Error(submitData.error || 'Failed to submit transaction');
+      }
+
+      const signature = submitData.signature;
+      console.log('📤 Transaction submitted:', signature);
 
       setTxSignature(signature);
       setState('success');

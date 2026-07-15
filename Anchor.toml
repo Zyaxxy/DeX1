@@ -10,7 +10,7 @@ skip-lint = false
 dexi = "HLqcxyy9DrVH7DJ2NqTza8Vq6GWB4aUuUSjFWdq5EAmt"
 
 [provider]
-cluster = "https://devnet.helius-rpc.com/?api-key=6194abc3-69c9-4d23-9482-e8831fd059be"
+cluster = "devnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
