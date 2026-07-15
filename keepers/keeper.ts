@@ -251,7 +251,7 @@ class DexiKeeper {
         }
         entries.push({ entryAddress: entry.pubkey.toBase58(), userAddress, score: entry.score, position, prizeEstimate });
       }
-      const { saveLeaderboard } = await import('../app/src/data/leaderboard.js');
+      const { saveLeaderboard } = await import('../app/src/data/leaderboard.ts');
       await saveLeaderboard({
         contestAddress: contest.pubkey.toBase58(),
         fixtureId: contest.fixtureId || String(contest.id),
