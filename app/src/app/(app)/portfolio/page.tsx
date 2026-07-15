@@ -44,7 +44,7 @@ import {
   USDC_DECIMALS,
 } from '@/solana/client';
 import { decodeAthletePool, ATHLETE_POOL_DISCRIMINATOR, findConfigPda, decodeAdminConfig, findEntryPda, decodeUserEntry, decodeContest } from '@dexi/sdk';
-import { getBase58Decoder } from '@solana/kit';
+import bs58 from 'bs58';
 import { PublicKey } from '@solana/web3.js';
 import { getAssociatedTokenAddressSync, AccountLayout } from '@solana/spl-token';
 
@@ -129,7 +129,7 @@ export default function PortfolioPage() {
       const response = await getRpc().getProgramAccounts(PROGRAM_ID.toBase58() as any, {
         encoding: 'base64',
         filters: [
-          { memcmp: { offset: BigInt(0), encoding: 'base58', bytes: getBase58Decoder().decode(ATHLETE_POOL_DISCRIMINATOR) as any } },
+          { memcmp: { offset: 0, encoding: 'base58', bytes: bs58.encode(Buffer.from(ATHLETE_POOL_DISCRIMINATOR)) } },
         ],
       }).send();
 
@@ -218,7 +218,7 @@ export default function PortfolioPage() {
       const contestAccounts = await getRpc().getProgramAccounts(PROGRAM_ID.toBase58() as any, {
         encoding: 'base64',
         filters: [
-          { memcmp: { offset: BigInt(0), encoding: 'base58', bytes: getBase58Decoder().decode(new Uint8Array([216, 26, 88, 18, 251, 80, 201, 96])) as any } },
+          { memcmp: { offset: 0, encoding: 'base58', bytes: bs58.encode(Buffer.from([216, 26, 88, 18, 251, 80, 201, 96])) } },
         ],
       }).send();
 

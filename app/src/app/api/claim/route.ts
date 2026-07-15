@@ -21,6 +21,7 @@ import {
   getClaimRewardInstruction,
   CLAIM_REWARD_DISCRIMINATOR,
 } from '@dexi/sdk';
+import { getRpcUrls } from '@/solana/multi-rpc';
 
 export const maxDuration = 60;
 
@@ -278,7 +279,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing contestAddress or userAddress' }, { status: 400 });
     }
 
-    const rpcUrl = process.env.RPC_URL || 'https://api.devnet.solana.com';
+    const rpcUrl = getRpcUrls()[0] || process.env.RPC_URL || 'https://api.devnet.solana.com';
     const keeperPrivateKey = process.env.KEEPER_PRIVATE_KEY;
 
     if (!keeperPrivateKey) {
@@ -292,8 +293,8 @@ export async function POST(request: NextRequest) {
     const contestPubkey = new PublicKey(contestAddress);
     const userPubkey = new PublicKey(userAddress);
 
-    const configPdaResult = await findConfigPda() as unknown as { address: string };
-    const configPda = new PublicKey(configPdaResult.address);
+    const [configPdaAddress] = await findConfigPda();
+    const configPda = new PublicKey(configPdaAddress);
     log(`📋 Config PDA: ${configPda.toBase58()}`);
 
     const configInfo = await connection.getAccountInfo(configPda, 'confirmed');
@@ -309,6 +310,9 @@ export async function POST(request: NextRequest) {
       log('⚠️ Keeper key mismatch, but continuing...');
     }
 
+    if (!configData.usdcMint) {
+      return NextResponse.json({ error: 'USDC mint address is missing from config' }, { status: 500 });
+    }
     const usdcMint = new PublicKey(configData.usdcMint);
     log(`💰 USDC Mint: ${usdcMint.toBase58()}`);
 
@@ -325,8 +329,8 @@ export async function POST(request: NextRequest) {
 
     log(`🏆 Contest status: Settled, Prize Pool: ${decodedContest.prizePool}`);
 
-    const entryPdaResult = await findEntryPda({ contest: contestAddress, user: userAddress }) as unknown as { address: string };
-    const entryPda = new PublicKey(entryPdaResult.address);
+    const [entryPdaAddress] = await findEntryPda({ contest: contestAddress, user: userAddress });
+    const entryPda = new PublicKey(entryPdaAddress);
     log(`📝 Entry PDA: ${entryPda.toBase58()}`);
 
     const entryInfo = await connection.getAccountInfo(entryPda, 'confirmed');
@@ -343,6 +347,9 @@ export async function POST(request: NextRequest) {
     log(`👤 Entry user: ${decodedEntry.user.toString()}`);
     log(`✅ Entry claimed: ${decodedEntry.claimed}`);
 
+    if (!decodedContest.escrowVault) {
+      return NextResponse.json({ error: 'Escrow vault address is missing from contest' }, { status: 500 });
+    }
     const escrowVault = new PublicKey(decodedContest.escrowVault);
     log(`🔐 Escrow Vault: ${escrowVault.toBase58()}`);
 
@@ -359,35 +366,57 @@ export async function POST(request: NextRequest) {
       log(`⚠️ Could not calculate prize amount: ${prizeAmountResult.error}`);
     }
 
-    const amount = prizeAmountResult.amount > 0 ? prizeAmountResult.amount : 0;
+    const amount = typeof prizeAmountResult.amount === 'number' && isFinite(prizeAmountResult.amount) ? prizeAmountResult.amount : 0;
     log(`💵 Calculated prize amount: ${amount} USDC`);
 
-    if (amount === 0) {
+    if (amount <= 0) {
       return NextResponse.json({ error: 'No prize to claim (position outside prize pool)' }, { status: 400 });
     }
 
-    const amountBigInt = BigInt(Math.floor(amount * 1_000_000));
+    const amountMicros = Math.floor(amount * 1_000_000);
+    if (!isFinite(amountMicros) || amountMicros < 1) {
+      return NextResponse.json({ error: `Invalid prize amount: ${amount}` }, { status: 400 });
+    }
 
-    const claimInstruction: any = getClaimRewardInstruction({
-      config: configPda.toBase58() as any,
-      contest: contestAddress as any,
-      entry: entryPda.toBase58() as any,
-      escrowVault: escrowVault.toBase58() as any,
-      userUsdcAta: userUsdcAta.toBase58() as any,
-      user: userPubkey.toBase58() as any,
-      keeper: keeperKeypair.publicKey.toBase58() as any,
-      amount: amountBigInt,
-    });
+    let claimInstruction: any;
+    try {
+      claimInstruction = getClaimRewardInstruction({
+        config: configPda.toBase58() as any,
+        contest: contestAddress as any,
+        entry: entryPda.toBase58() as any,
+        escrowVault: escrowVault.toBase58() as any,
+        userUsdcAta: userUsdcAta.toBase58() as any,
+        user: userPubkey.toBase58() as any,
+        keeper: keeperKeypair.publicKey.toBase58() as any,
+        amount: amountMicros,
+      });
+    } catch (innerErr: any) {
+      log(`❌ Failed to build claim instruction: ${innerErr.message}`);
+      return NextResponse.json({ error: `Failed to build claim instruction: ${innerErr.message}` }, { status: 500 });
+    }
 
-    const instruction = new TransactionInstruction({
-      programId: PROGRAM_ID,
-      keys: claimInstruction.accounts.map((acc: any) => ({
-        pubkey: new PublicKey(acc.address),
-        isSigner: (acc as any).isSigner ?? false,
-        isWritable: (acc as any).isWritable ?? false,
-      })),
-      data: Buffer.from(claimInstruction.data),
-    });
+    let instruction: TransactionInstruction;
+    try {
+      const keys = claimInstruction.accounts.map((acc: any, idx: number) => {
+        if (!acc.address) {
+          throw new Error(`Account ${idx} has no address`);
+        }
+        return {
+          pubkey: new PublicKey(acc.address),
+          isSigner: (acc as any).isSigner ?? false,
+          isWritable: (acc as any).isWritable ?? false,
+        };
+      });
+      instruction = new TransactionInstruction({
+        programId: PROGRAM_ID,
+        keys,
+        data: Buffer.from(claimInstruction.data),
+      });
+    } catch (innerErr: any) {
+      log(`❌ Failed to create TransactionInstruction: ${innerErr.message}`);
+      log(`  Accounts: ${JSON.stringify(claimInstruction.accounts.map((a: any) => a.address))}`);
+      return NextResponse.json({ error: `Failed to build transaction: ${innerErr.message}` }, { status: 500 });
+    }
 
     const tx = new Transaction();
     tx.add(instruction);
@@ -410,6 +439,10 @@ export async function POST(request: NextRequest) {
     });
   } catch (error: any) {
     console.error('🚨 Claim API error:', error);
+    log(`🚨 Unhandled error: ${error.message}`);
+    if (error.stack) {
+      log(`  Stack: ${error.stack.split('\n').slice(1, 3).join('; ')}`);
+    }
     return NextResponse.json({
       error: error.message || 'Unknown error',
       logs,

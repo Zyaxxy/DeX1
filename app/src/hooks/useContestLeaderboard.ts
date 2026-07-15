@@ -114,10 +114,12 @@ export function useContestLeaderboard(
 
       const data = await response.json();
       const rawEvents = Array.isArray(data) ? data : (data.events || []);
+      const lastEvent = rawEvents[rawEvents.length - 1];
 
+      const finishedStatuses = ['F', 'FET', 'FPE', 'A', 'C'];
       const newMatchStatus: 'live' | 'finished' | 'upcoming' =
-        (data.statusSoccerId === 'F' || data.gameState === 'Ended' || data.statusId === 'F') ? 'finished' :
-        (data.statusSoccerId === 'H' || data.gameState === 'InPlay' || data.statusId === 'H') ? 'live' : 'upcoming';
+        (lastEvent && (finishedStatuses.includes(lastEvent.statusSoccerId) || lastEvent.gameState === 'Ended' || lastEvent.statusId === '100' || lastEvent.action === 'game_finalised')) ? 'finished' :
+        (lastEvent && (lastEvent.statusSoccerId === 'H' || lastEvent.gameState === 'InPlay' || lastEvent.statusId === 'H')) ? 'live' : 'upcoming';
 
       setMatchStatus(newMatchStatus);
 
@@ -132,8 +134,8 @@ export function useContestLeaderboard(
         playerEvents.get(playerId)!.push(action.toLowerCase());
       }
 
-      const participant1Score = data.score?.Participant1?.Score || 0;
-      const participant2Score = data.score?.Participant2?.Score || 0;
+      const participant1Score = lastEvent?.score?.Participant1?.Score || 0;
+      const participant2Score = lastEvent?.score?.Participant2?.Score || 0;
 
       const accountsResponse = await getRpc().getProgramAccounts(PROGRAM_ID.toBase58() as any, {
         encoding: 'base64',

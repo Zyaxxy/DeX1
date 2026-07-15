@@ -17,6 +17,7 @@ import {
   CONTEST_DISCRIMINATOR,
   ContestStatus,
 } from '@dexi/sdk';
+import { getRpcUrls } from '@/solana/multi-rpc';
 
 export const maxDuration = 60; // Extend duration for serverless processing execution limits
 
@@ -59,7 +60,7 @@ function contestDataFromSdk(decoded: any, pubkey: PublicKey): ContestData {
     totalMintCount: decoded.totalMintCount,
     processedMintCount: decoded.processedMintCount,
     escrowVault: new PublicKey(decoded.escrowVault),
-    fixtureId: String(decoded.fixtureId || ''),
+    fixtureId: decoded.fixtureId !== undefined && decoded.fixtureId !== null ? String(decoded.fixtureId) : '',
   };
 }
 
@@ -89,7 +90,7 @@ async function handleKeeperRequest(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const rpcUrl = process.env.RPC_URL || 'https://api.devnet.solana.com';
+    const rpcUrl = getRpcUrls()[0] || process.env.RPC_URL || 'https://api.devnet.solana.com';
     const keeperPrivateKey = process.env.KEEPER_PRIVATE_KEY;
     const txlineJwt = process.env.TXLINE_JWT;
     const txlineApiToken = process.env.TXLINE_API_TOKEN;
@@ -147,6 +148,12 @@ async function handleKeeperRequest(req: NextRequest) {
       log(`\n📋 Processing contest #${contest.id} (${contest.pubkey.toBase58()})`);
       log(`   Status: ${contest.status}, Entries: ${contest.entryCount}`);
 
+      // Skip contests with no entries — nothing to settle
+      if (contest.entryCount === 0) {
+        log('   ⏭️ No entries, skipping...');
+        continue;
+      }
+
       const contestKey = contest.pubkey;
 
       // STEP A: Lock Contest
@@ -185,6 +192,28 @@ async function handleKeeperRequest(req: NextRequest) {
           const configData = adminConfigDecoder.decode(configResponse.data);
           const usdcMint = new PublicKey(configData.usdcMint);
 
+          const entryAccounts = await connection.getProgramAccounts(PROGRAM_ID, {
+            filters: [
+              { memcmp: { offset: 40, bytes: contestKey.toBase58() } },
+            ],
+          });
+          const userEntryDecoder = getUserEntryDecoder();
+          const stakedMints = new Set<string>();
+          for (const { account } of entryAccounts) {
+            try {
+              const entryData = userEntryDecoder.decode(account.data);
+              for (const addr of entryData.athletes) {
+                stakedMints.add(addr);
+              }
+            } catch {
+              // skip decode failures
+            }
+          }
+          if (stakedMints.size === 0) {
+            log('   ⚠️ No staked mints found in entries, skipping mint processing');
+            continue;
+          }
+
           const tokenAccounts = await connection.getTokenAccountsByOwner(contestKey, {
             programId: TOKEN_PROGRAM_ID,
           });
@@ -194,9 +223,12 @@ async function handleKeeperRequest(req: NextRequest) {
           let batchCount = 0;
 
           for (const { pubkey, account } of tokenAccounts.value) {
-            if (processedCount >= contest.totalMintCount || batchCount >= 5) break;
+            if (processedCount >= stakedMints.size || batchCount >= 5) break;
             const mintPubkey = new PublicKey(account.data.slice(0, 32));
             if (mintPubkey.equals(usdcMint)) continue;
+
+            const mintStr = mintPubkey.toBase58();
+            if (!stakedMints.has(mintStr)) continue;
 
             const amountBytes = account.data.slice(64, 72);
             const amount = amountBytes.readBigUInt64LE(0);
@@ -217,7 +249,7 @@ async function handleKeeperRequest(req: NextRequest) {
                 keys: [
                   { pubkey: contestKey, isSigner: false, isWritable: true },
                   { pubkey: poolAddress, isSigner: false, isWritable: true },
-                  { pubkey: mintPubkey, isSigner: false, isWritable: false },
+                  { pubkey: mintPubkey, isSigner: false, isWritable: true },
                   { pubkey: contestTokenVault, isSigner: false, isWritable: true },
                   { pubkey: contest.escrowVault, isSigner: false, isWritable: true },
                   { pubkey: configAddress, isSigner: false, isWritable: false },
@@ -235,21 +267,25 @@ async function handleKeeperRequest(req: NextRequest) {
               const sig = await sendAndConfirm(connection, keeperKeypair, [ix]);
               processedCount++;
               batchCount++;
-              log(`      ✅ Processed mint ${mintPubkey.toBase58()} (${processedCount}/${contest.totalMintCount}): ${sig}`);
+              log(`      ✅ Processed mint ${mintStr} (${processedCount}/${stakedMints.size}): ${sig}`);
             } catch (e: any) {
-              log(`      ❌ Error processing mint ${mintPubkey.toBase58()}: ${e.message}`);
+              log(`      ❌ Error processing mint ${mintStr}: ${e.message}`);
             }
           }
 
           // If we reached batch limit, exit this contest processing for now (will resume in next cron trigger)
-          if (processedCount < contest.totalMintCount) {
+          if (processedCount < stakedMints.size) {
             log(`   ⏳ Batch processing limit reached for contest #${contest.id}. Will continue in the next cron run.`);
             continue;
           }
         }
 
         // STEP C: Settle Contest (only if all mints are processed)
-        if (contest.processedMintCount === contest.totalMintCount || contest.totalMintCount === 0) {
+        const contestInfo = await connection.getAccountInfo(contestKey, 'confirmed');
+        const updatedContest = contestInfo ? contestDecoder.decode(contestInfo.data) : null;
+        const onChainProcessed = updatedContest ? Number(updatedContest.processedMintCount) : contest.processedMintCount;
+        const onChainTotal = updatedContest ? Number(updatedContest.totalMintCount) : contest.totalMintCount;
+        if (onChainProcessed === onChainTotal || onChainTotal === 0) {
           log('   📊 Checking if match is finished on TxLINE...');
           
           if (!txlineJwt || !txlineApiToken) {
@@ -270,7 +306,28 @@ async function handleKeeperRequest(req: NextRequest) {
             });
             if (response.ok) {
               const data: any = await response.json();
-              isMatchFinished = data.statusSoccerId === 'F' || data.gameState === 'Ended' || data.statusId === 'F';
+              const events = Array.isArray(data) ? data : (data.events || []);
+              if (events.length > 0) {
+                for (const event of events) {
+                  const statusSoccerId = event.statusSoccerId ?? event.StatusSoccerId;
+                  const gameState = event.gameState ?? event.GameState;
+                  const statusId = event.statusId ?? event.StatusId;
+                  const action = event.action ?? event.Action;
+                  const finishedSoccerIds = ['F', 'FET', 'FPE', 'A', 'C'];
+                  if (finishedSoccerIds.includes(statusSoccerId)) { isMatchFinished = true; break; }
+                  if (gameState === 'Ended') { isMatchFinished = true; break; }
+                  if (String(statusId) === '100' || [5, 10, 13, 15, 16].includes(Number(statusId))) { isMatchFinished = true; break; }
+                  if (action === 'game_finalised') { isMatchFinished = true; break; }
+                }
+                if (!isMatchFinished) {
+                  const lastEvent = events[events.length - 1];
+                  log(`   🔍 TxLINE — no finished event found. Last: Action=${lastEvent.Action ?? lastEvent.action}, StatusId=${lastEvent.StatusId ?? lastEvent.statusId}, GameState=${lastEvent.GameState ?? lastEvent.gameState}`);
+                }
+              } else {
+                log(`   ⚠️ TxLINE snapshot returned no events for fixture ${fixtureId}`);
+              }
+            } else {
+              log(`   ⚠️ TxLINE snapshot HTTP ${response.status} for fixture ${fixtureId}`);
             }
           } catch (e: any) {
             log(`   ❌ Error checking TxLINE match status: ${e.message}`);

@@ -57,6 +57,9 @@ function isRateLimitResponse(status: number, body: unknown): boolean {
   if (status === 429) {
     return true;
   }
+  if (status === 400) {
+    return true;
+  }
   if (status >= 500 && status < 600) {
     return true;
   }

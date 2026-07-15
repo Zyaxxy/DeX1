@@ -79,72 +79,96 @@ impl<'info> ProcessEntryMint<'info> {
             .checked_sub(swap_amount)
             .ok_or(DexiError::ArithmeticError)?;
 
-        // Zero-fee swap so the full swap_amount flows to the prize pool.
-        let mut curve = ConstantProduct::init(
-            self.pool_token_vault.amount,
-            self.pool_usdc_vault.amount,
-            0,
-            0, // no fee on this internal operation
-            Some(6),
-        )
-        .map_err(DexiError::from)?;
-
-        let swap_result = curve
-            .swap(LiquidityPair::X, swap_amount, 0)
+        // Try to swap 90% via the CPMM pool. If the pool has no liquidity
+        // (zero token or USDC reserves), skip the swap and burn everything instead.
+        let swap_result = (|| -> std::result::Result<_, DexiError> {
+            let mut curve = ConstantProduct::init(
+                self.pool_token_vault.amount,
+                self.pool_usdc_vault.amount,
+                0,
+                0,
+                Some(6),
+            )
             .map_err(DexiError::from)?;
+
+            curve
+                .swap(LiquidityPair::X, swap_amount, 0)
+                .map_err(DexiError::from)
+        })();
 
         let contest_seeds: &[&[u8]] = &[
             CONTEST_SEED,
             &self.contest.id.to_le_bytes(),
             &[self.contest.bump],
         ];
-        let pool_seeds: &[&[u8]] = &[
-            POOL_SEED,
-            self.pool.mint.as_ref(),
-            &[self.pool.bump],
-        ];
 
-        // Step 1 — send tokens from contest vault → pool token vault.
-        token::transfer(
-            CpiContext::new_with_signer(
-                self.token_program.key(),
-                Transfer {
-                    from: self.contest_token_vault.to_account_info(),
-                    to: self.pool_token_vault.to_account_info(),
-                    authority: self.contest.to_account_info(),
-                },
-                &[contest_seeds],
-            ),
-            swap_amount,
-        )?;
+        match swap_result {
+            Ok(swap_result) => {
+                let pool_seeds: &[&[u8]] = &[
+                    POOL_SEED,
+                    self.pool.mint.as_ref(),
+                    &[self.pool.bump],
+                ];
 
-        // Step 2 — receive USDC from pool usdc vault → contest escrow (prize pool).
-        token::transfer(
-            CpiContext::new_with_signer(
-                self.token_program.key(),
-                Transfer {
-                    from: self.pool_usdc_vault.to_account_info(),
-                    to: self.contest_escrow_vault.to_account_info(),
-                    authority: self.pool_authority.to_account_info(),
-                },
-                &[pool_seeds],
-            ),
-            swap_result.withdraw,
-        )?;
+                // Step 1 — send tokens from contest vault → pool token vault.
+                token::transfer(
+                    CpiContext::new_with_signer(
+                        self.token_program.key(),
+                        Transfer {
+                            from: self.contest_token_vault.to_account_info(),
+                            to: self.pool_token_vault.to_account_info(),
+                            authority: self.contest.to_account_info(),
+                        },
+                        &[contest_seeds],
+                    ),
+                    swap_amount,
+                )?;
 
-        // Step 3 — burn the remaining tokens permanently.
-        burn(
-            CpiContext::new_with_signer(
-                self.token_program.key(),
-                Burn {
-                    from: self.contest_token_vault.to_account_info(),
-                    mint: self.mint.to_account_info(),
-                    authority: self.contest.to_account_info(),
-                },
-                &[contest_seeds],
-            ),
-            burn_amount,
-        )?;
+                // Step 2 — receive USDC from pool usdc vault → contest escrow (prize pool).
+                token::transfer(
+                    CpiContext::new_with_signer(
+                        self.token_program.key(),
+                        Transfer {
+                            from: self.pool_usdc_vault.to_account_info(),
+                            to: self.contest_escrow_vault.to_account_info(),
+                            authority: self.pool_authority.to_account_info(),
+                        },
+                        &[pool_seeds],
+                    ),
+                    swap_result.withdraw,
+                )?;
+
+                // Step 3 — burn the remaining tokens permanently.
+                burn(
+                    CpiContext::new_with_signer(
+                        self.token_program.key(),
+                        Burn {
+                            from: self.contest_token_vault.to_account_info(),
+                            mint: self.mint.to_account_info(),
+                            authority: self.contest.to_account_info(),
+                        },
+                        &[contest_seeds],
+                    ),
+                    burn_amount,
+                )?;
+            }
+            Err(DexiError::InsufficientLiquidity) => {
+                msg!("Pool has no liquidity — burning {} tokens instead of swapping", vault_balance);
+                burn(
+                    CpiContext::new_with_signer(
+                        self.token_program.key(),
+                        Burn {
+                            from: self.contest_token_vault.to_account_info(),
+                            mint: self.mint.to_account_info(),
+                            authority: self.contest.to_account_info(),
+                        },
+                        &[contest_seeds],
+                    ),
+                    vault_balance,
+                )?;
+            }
+            Err(e) => return Err(e.into()),
+        }
 
         // Track progress so settle_contest can assert all mints are fully processed.
         self.contest.processed_mint_count = self

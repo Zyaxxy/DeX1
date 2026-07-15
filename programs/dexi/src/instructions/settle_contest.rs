@@ -25,11 +25,9 @@ impl<'info> SettleContest<'info> {
         // Locked → Settled is the only valid transition.
         require!(self.contest.status == ContestStatus::Locked, DexiError::ContestNotLocked);
 
-        // Ensure every athlete mint's tokens have been swapped to USDC for the prize pool.
-        require!(
-            self.contest.processed_mint_count == self.contest.total_mint_count,
-            DexiError::InvalidContestStatus
-        );
+        // Ensure at least one athlete mint's tokens were swapped to USDC for the prize pool.
+        // (Only staked mints are processed; total_mint_count may exceed what was staked.)
+        require!(self.contest.processed_mint_count >= 1, DexiError::InvalidContestStatus);
 
         self.contest.prize_pool = self.escrow_vault.amount;
         self.contest.status = ContestStatus::Settled;

@@ -145,7 +145,7 @@ class DexiKeeper {
   }
 
   private async processAllContests() {
-    const contests = await this.findOpenContests();
+    const contests = await this.findProcessableContests();
     console.log(`Found ${contests.length} contest(s) needing action`);
     for (const contest of contests) {
       try {
@@ -156,7 +156,7 @@ class DexiKeeper {
     }
   }
 
-  private async findOpenContests(): Promise<ContestData[]> {
+  private async findProcessableContests(): Promise<ContestData[]> {
     const accounts = await this.connection.getProgramAccounts(PROGRAM_ID, {
       filters: [
         {
@@ -179,7 +179,8 @@ class DexiKeeper {
         const status = STATUS_MAP[decoded.status];
         const startTime = Number(decoded.startTime);
 
-        if (status === 'open' && startTime <= now) {
+        // Sweep both open (needs locking) and locked (needs processing/settlement) contests
+        if ((status === 'open' && startTime <= now) || status === 'locked') {
           contests.push(contestDataFromSdk(decoded, pubkey));
         }
       } catch (e) {
@@ -195,6 +196,12 @@ class DexiKeeper {
     console.log(`   Status: ${contest.status}, Entries: ${contest.entryCount}`);
 
     const contestKey = contest.pubkey;
+
+    // Skip contests with no entries — nothing to settle
+    if (contest.entryCount === 0) {
+      console.log('   ⏭️ No entries, skipping...');
+      return;
+    }
 
     // Step 1: Lock
     if (contest.status === 'open') {
@@ -267,7 +274,7 @@ class DexiKeeper {
       keys: [
         { pubkey: contestKey, isSigner: false, isWritable: true },
         { pubkey: poolAddress, isSigner: false, isWritable: true },
-        { pubkey: mint, isSigner: false, isWritable: false },
+        { pubkey: mint, isSigner: false, isWritable: true },
         { pubkey: contestTokenVault, isSigner: false, isWritable: true },
         { pubkey: escrowVault, isSigner: false, isWritable: true },
         { pubkey: this.configAddress, isSigner: false, isWritable: false },
@@ -334,15 +341,35 @@ class DexiKeeper {
     const configData = await this.fetchAdminConfig();
     const usdcMint = new PublicKey(configData.usdcMint);
 
+    const entries = await this.getEntriesForContest(contestKey);
+    const stakedMints = new Set<string>();
+    for (const entry of entries) {
+      try {
+        const entryData = await this.fetchUserEntry(entry.pubkey);
+        for (const addr of entryData.athletes) {
+          stakedMints.add(addr);
+        }
+      } catch {
+        // entry might not exist
+      }
+    }
+    if (stakedMints.size === 0) {
+      console.log('   ⚠️ No staked mints found in entries, skipping mint processing');
+      return;
+    }
+
     const tokenAccounts = await this.connection.getTokenAccountsByOwner(contestKey, {
       programId: TOKEN_PROGRAM_ID,
     });
 
     let processedCount = contest.processedMintCount;
     for (const { pubkey, account } of tokenAccounts.value) {
-      if (processedCount >= contest.totalMintCount) break;
+      if (processedCount >= stakedMints.size) break;
       const mintPubkey = new PublicKey(account.data.slice(0, 32));
       if (mintPubkey.equals(usdcMint)) continue;
+
+      const mintStr = mintPubkey.toBase58();
+      if (!stakedMints.has(mintStr)) continue;
 
       const amountBytes = account.data.slice(64, 72);
       const amount = amountBytes.readBigUInt64LE(0);
@@ -364,9 +391,9 @@ class DexiKeeper {
         );
         const sig = await this.sendAndConfirm([ix]);
         processedCount++;
-        console.log(`      ✅ Processed mint ${mintPubkey.toBase58()} (${processedCount}/${contest.totalMintCount}): ${sig}`);
+        console.log(`      ✅ Processed mint ${mintStr} (${processedCount}/${stakedMints.size}): ${sig}`);
       } catch (e: any) {
-        console.error(`      ❌ Error processing mint ${mintPubkey.toBase58()}:`, e.message);
+        console.error(`      ❌ Error processing mint ${mintStr}:`, e.message);
       }
     }
   }
@@ -417,8 +444,8 @@ class DexiKeeper {
     const playerRoles = new Map<string, number>();
 
     for (const event of txlineEvents) {
-      const action = event.action?.toLowerCase();
-      const playerId = event.playerId?.toString();
+      const action = (event.action ?? event.Action ?? '').toLowerCase();
+      const playerId = (event.playerId ?? event.PlayerId ?? event.data?.PlayerId ?? event.Data?.PlayerId)?.toString();
       if (!playerId || !action) continue;
 
       let pts = playerPoints.get(playerId) || 0;
@@ -434,7 +461,9 @@ class DexiKeeper {
       const athletes: string[] = entryData.athletes;
 
       let totalScore = 0;
-      const opponentScore = txlineData?.score?.Participant2?.Score || txlineData?.score?.Participant1?.Score || 0;
+      const lastScoreEvent = Array.isArray(txlineData) ? txlineData[txlineData.length - 1] : txlineData;
+      const evtScore = lastScoreEvent?.score ?? lastScoreEvent?.Score ?? {};
+      const opponentScore = evtScore?.Participant2?.Score || evtScore?.Participant1?.Score || 0;
       const cleanSheet = opponentScore === 0;
 
       for (const athleteAddr of athletes) {
@@ -452,8 +481,8 @@ class DexiKeeper {
 
           let athleteScore = 0;
           for (const event of txlineEvents) {
-            const action = event.action?.toLowerCase();
-            const eventPlayerId = event.playerId?.toString();
+            const action = (event.action ?? event.Action ?? '').toLowerCase();
+            const eventPlayerId = (event.playerId ?? event.PlayerId ?? event.data?.PlayerId ?? event.Data?.PlayerId)?.toString();
             if (eventPlayerId !== playerId || !action) continue;
 
             if (action.includes('goal')) {
@@ -493,12 +522,43 @@ class DexiKeeper {
       });
       if (response.ok) {
         const data: any = await response.json();
-        return data.statusSoccerId === 'F' || data.gameState === 'Ended' || data.statusId === 'F';
+        const events = Array.isArray(data) ? data : (data.events || []);
+        if (events.length === 0) {
+          console.log(`   ⚠️ TxLINE snapshot returned no events for fixture ${fixtureId}`);
+          return false;
+        }
+        for (const event of events) {
+          const statusSoccerId = event.statusSoccerId ?? event.StatusSoccerId;
+          const gameState = event.gameState ?? event.GameState;
+          const statusId = event.statusId ?? event.StatusId;
+          const action = event.action ?? event.Action;
+          const finishedSoccerIds = ['F', 'FET', 'FPE', 'A', 'C'];
+          if (finishedSoccerIds.includes(statusSoccerId)) {
+            console.log(`   ✅ Match finished: statusSoccerId=${statusSoccerId}`);
+            return true;
+          }
+          if (gameState === 'Ended') {
+            console.log(`   ✅ Match finished: gameState=Ended`);
+            return true;
+          }
+          if (String(statusId) === '100' || [5, 10, 13, 15, 16].includes(Number(statusId))) {
+            console.log(`   ✅ Match finished: statusId=${statusId}`);
+            return true;
+          }
+          if (action === 'game_finalised') {
+            console.log(`   ✅ Match finished: action=game_finalised`);
+            return true;
+          }
+        }
+        const lastEvent = events[events.length - 1];
+        console.log(`   🔍 TxLINE — no finished event found. Last: Action=${lastEvent.Action ?? lastEvent.action}, StatusId=${lastEvent.StatusId ?? lastEvent.statusId}, GameState=${lastEvent.GameState ?? lastEvent.gameState}`);
+      } else {
+        console.log(`   ⚠️ TxLINE snapshot HTTP ${response.status} for fixture ${fixtureId}`);
       }
     } catch (e) {
       console.error(`Error checking if match ${fixtureId} is finished:`, e);
     }
-    return true;
+    return false;
   }
 
   private async settleContest(contestKey: PublicKey, escrowVault: PublicKey) {
@@ -540,7 +600,7 @@ function contestDataFromSdk(decoded: any, pubkey: PublicKey): ContestData {
     totalMintCount: decoded.totalMintCount,
     processedMintCount: decoded.processedMintCount,
     escrowVault: new PublicKey(decoded.escrowVault),
-    fixtureId: String(decoded.fixtureId || ''),
+    fixtureId: decoded.fixtureId !== undefined && decoded.fixtureId !== null ? String(decoded.fixtureId) : '',
   };
 }
 
