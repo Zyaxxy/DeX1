@@ -1,4 +1,4 @@
-import { initDB, upsertLeaderboard, getLeaderboard } from './db.ts';
+import { initDB, upsertLeaderboard, getLeaderboard } from './db';
 
 export interface LeaderboardEntry {
   entryAddress: string;
