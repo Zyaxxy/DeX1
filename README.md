@@ -1,6 +1,5 @@
 # Dexi — Decentralized Fantasy Sports on Solana
 
-**TxLINE Solana Colosseum Hackathon 2026 — Data-Driven Web3 Platforms Track**
 
 Dexi is a decentralized fantasy sports protocol built on Solana using the Anchor framework. Users trade athlete tokens on constant-product AMMs, draft 11-player lineups, and win USDC prizes — all verified and settled using live TxLINE World Cup data.
 
@@ -116,6 +115,7 @@ RPC_URL=https://api.devnet.solana.com
 | [docs/current-scope.md](docs/current-scope.md) | MVP scope — instructions, contest flow, constraints |
 | [docs/future-scope.md](docs/future-scope.md) | Planned enhancements (merkle settlement, salary caps, LP program) |
 | [docs/scoring.md](docs/scoring.md) | Football scoring rules and formulas |
+| [docs/product.md](docs/product.md) | Product vision, user personas, design principles |
 
 
 
