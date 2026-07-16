@@ -1,11 +1,11 @@
 # Devnet Configuration
 
 ## Program
-- **Program ID**: `B9PQhgmdn2TrEMFmMXfaJg7HXCuzzj9QrtxFDEXSMsw2`
-- **Config PDA**: `EKXk98TNLYkXvp5bZqNApJJetSpg5o3tcNGU1vJ8Je9f` (seed: `admin`)
+- **Program ID**: `HLqcxyy9DrVH7DJ2NqTza8Vq6GWB4aUuUSjFWdq5EAmt`
+- **Config PDA**: `HxpNdeFQtaL3EVC2V966KCBEZpE67HcQciRjiEfxBxso` (seed: `admin`)
 
 ## Tokens
-- **USDC Mint**: `E75horRbsyTyiA72G1GKxV8JspTU6Lyz82CSy5ptWqgs`
+- **USDC Mint**: `9Y27Cm2eWZ1H6KzMss5Py4BhRPBMYKCssEoWBp2MunEP`
 - **Decimals**: 6
 - **Mint Authority**: `FsHawHBmgvn5uGZHDWt2NQMbpFGFnCqiC4Knmw31NCrr` (admin)
 
@@ -31,5 +31,5 @@ anchor deploy
 
 ## Admin Wallet
 - Balance: ~12.94 SOL (enough for deploy)
-- USDC ATA: `12gHLWSdhiXXLQTfhwHsc5mxfg6c8svNADZZLQkChsn1`
+- USDC ATA: `Aoq3ePZZg72RUwiMN6DRG8vHtwa3tXCBhvC8HjWD63bq`
 - USDC Balance: 99,991 USDC

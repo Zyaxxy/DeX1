@@ -96,16 +96,12 @@ Dexi uses TxLINE as its primary data source for live match resolution:
 - Anchor 1.0.2
 - pnpm (workspace monorepo)
 
-### Environment Variables
+### Environment Setup
 
-Create a `.env` file in the `keepers/` directory:
+Dexi consists of a Next.js web application and an off-chain keeper bot. Both require environment configurations to run:
 
-```
-TXLINE_JWT=your_jwt_token
-TXLINE_API_TOKEN=your_api_token
-RPC_URL=https://api.devnet.solana.com
-```
-
+- **Frontend App**: Refer to [app/README.md](file:///home/utkarsh/Projects/dexi/app/README.md) and [app/.env.example](file:///home/utkarsh/Projects/dexi/app/.env.example) for setup.
+- **Keeper Bot**: Refer to [keepers/README.md](file:///home/utkarsh/Projects/dexi/keepers/README.md) and [keepers/.env.example](file:///home/utkarsh/Projects/dexi/keepers/.env.example) for setup.
 
 ## Documentation
 
@@ -115,7 +111,5 @@ RPC_URL=https://api.devnet.solana.com
 | [docs/current-scope.md](docs/current-scope.md) | MVP scope — instructions, contest flow, constraints |
 | [docs/future-scope.md](docs/future-scope.md) | Planned enhancements (merkle settlement, salary caps, LP program) |
 | [docs/scoring.md](docs/scoring.md) | Football scoring rules and formulas |
-| [docs/product.md](docs/product.md) | Product vision, user personas, design principles |
-
-
-
+| [docs/PRODUCT.md](docs/PRODUCT.md) | Product vision, user personas, design principles |
+| [docs/devnet-config.md](docs/devnet-config.md) | Devnet addresses, configs, and initialization |

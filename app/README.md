@@ -1,36 +1,51 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Dexi Frontend App
+
+This directory contains the Next.js web application for Dexi, a decentralized fantasy sports platform on Solana.
+
+## Tech Stack
+- **Framework**: Next.js (using App Router)
+- **Language**: TypeScript
+- **Styling**: Tailwind CSS v4, shadcn/ui, Framer Motion
+- **Solana Connection**: `@solana/wallet-adapter-react` (Phantom/Solflare) + `@solana/kit`
+- **Database**: Neon PostgreSQL (via `@neondatabase/serverless` SQL client)
+- **Design System**: Sleek modern design system tailored to sports trading analytics
 
 ## Getting Started
 
-First, run the development server:
-
+### 1. Environment Setup
+Create a `.env` file in this directory based on the `.env.example` file:
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp .env.example .env
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Fill in the appropriate configuration keys:
+- **`NEXT_PUBLIC_CLUSTER`**: Set to `devnet` (or `localnet` for local testing).
+- **`RPC_URL`**: Solana RPC endpoint URL.
+- **`ADMIN_PASSWORD`**: Set a password for accessing the `/admin` portal.
+- **`ADMIN_PRIVATE_KEY`**: Private key (JSON array format) of the admin wallet authorized to initialize and manage athlete pools.
+- **`KEEPER_PRIVATE_KEY`**: Private key of the keeper bot authorized to lock/settle contests.
+- **`TXLINE_JWT` & `TXLINE_API_TOKEN`**: Credentials for the TxLINE Sports API to fetch real-world World Cup match schedules and scores.
+- **`DATABASE_URL`**: Neon PostgreSQL connection URI.
+- **`CRON_SECRET`**: Secure token to authenticate keeper automated cron triggers.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 2. Install Dependencies
+Run the workspace install from the repository root:
+```bash
+pnpm install
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### 3. Run Development Server
+Start the frontend locally:
+```bash
+pnpm dev
+```
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Key Routes & Directories
+- `src/app/`: Next.js pages and layouts.
+  - `(app)/admin/`: Admin config panel (create/update pools, update global mint/fee config).
+  - `(app)/contest/[id]/`: Contest drafting lineup page & real-time leaderboard/settlement.
+  - `(app)/faucet/`: Devnet USDC faucet for user onboarding.
+- `src/components/`: Reusable Tailwind components (cards, layout shell, tables).
+- `src/solana/`: Client configurations, provider wrappers, and helper scripts for program interactions.
+- `src/data/`: Database utilities and SQL queries.
